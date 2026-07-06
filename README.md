@@ -2,6 +2,14 @@
 
 Nebula AI Place is a local-first desktop AI workspace built with Electron and Ollama. It keeps chats and generated projects on your machine, can write project files, preview coding activity, and open the project folder directly from the app.
 
+## Preview
+
+<img width="3004" height="1600" alt="ray-so-export" src="https://github.com/user-attachments/assets/fe2a7105-3bea-4cb4-9f56-50324b62b2ed" />
+
+
+<img width="3839" height="2080" alt="Снимок экрана 2026-07-06 163654" src="https://github.com/user-attachments/assets/91562a8b-1b7c-4237-8a47-84742f9be9f0" />
+
+
 ## Features
 
 - Local Ollama-based chat and coding assistant.
