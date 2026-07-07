@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nebula</title>
+<title>Nevo</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,39 +13,42 @@
   <!-- Sidebar / tab -->
   <aside class="sidebar" id="sidebar">
     <div class="side-header">
-      <div class="side-logo"><span class="logo-n">N</span></div>
+      <div class="side-logo" aria-label="Nevo">
+        <img class="nevo-mark-img" src="resources/nevo-logo.png" alt="" aria-hidden="true">
+      </div>
       <div class="side-actions">
         <div class="status-pill" id="statusPill" title="Ollama status">
           <div class="status-dot" id="statusDot"></div>
         </div>
-        <button class="side-btn" id="settingsBtn" title="Settings" data-tooltip="Settings">
+        <button class="side-btn" id="settingsBtn" title="Settings" aria-label="Settings" data-tooltip="Settings">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
         </button>
-        <button class="side-btn" id="toggleTabBtn" title="Закрыть боковую панель" data-tooltip="Закрыть боковую панель">
+        <button class="side-btn" id="toggleTabBtn" title="Close sidebar" aria-label="Close sidebar" data-tooltip="Close sidebar">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 4v16"/></svg>
         </button>
       </div>
     </div>
-    <nav class="tab-nav">
+    <div class="sidebar-scroll" id="sidebarScroll">
+      <nav class="tab-nav">
       <button class="tab-nav-item active" id="newChatBtn">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span>Новый чат</span>
+        <span>New chat</span>
       </button>
       <button class="tab-nav-item" id="searchChatsBtn">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <span>Искать чаты</span>
+        <span>Search chats</span>
       </button>
       <button class="tab-nav-item">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5V5a2 2 0 0 1 2-2h3v18H6a2 2 0 0 1-2-1.5Z"/><path d="M9 3h6v18H9z"/><path d="M15 3h3a2 2 0 0 1 2 2v14.5A2 2 0 0 1 18 21h-3z"/></svg>
-        <span>Библиотека</span>
+        <span>Library</span>
       </button>
       <button class="tab-nav-item" id="openProjectsBtn">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6.5A2.5 2.5 0 015.5 4H10l2 2h6.5A2.5 2.5 0 0121 8.5v8A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5v-10z"/></svg>
-        <span>Проекты</span>
+        <span>Projects</span>
       </button>
       <button class="tab-nav-item">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/></svg>
-        <span>Приложения</span>
+        <span>Apps</span>
       </button>
       <button class="tab-nav-item">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 6v8c0 5 8 8 8 8s8-3 8-8V6l-8-4Z"/><path d="M9 12h6"/><path d="M12 9v6"/></svg>
@@ -53,11 +56,15 @@
       </button>
       <button class="tab-nav-item">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
-        <span>Больше</span>
+        <span>More</span>
       </button>
     </nav>
-    <div class="tab-section-title">Недавнее</div>
+    <div class="tab-section-title">Recent</div>
     <div class="chat-history-list" id="chatHistoryList"></div>
+    </div>
+    <div class="sidebar-mini-scroll" id="sidebarMiniScroll" aria-hidden="true">
+      <div class="sidebar-mini-thumb" id="sidebarMiniThumb"></div>
+    </div>
   </aside>
 
   <!-- Main Area -->
@@ -65,17 +72,17 @@
     <div class="app-toolbar">
       <div class="toolbar-brand" aria-hidden="true"><span class="toolbar-n">N</span></div>
       <div class="toolbar-actions">
-        <button class="toolbar-btn" id="toolbarExplorerBtn" data-tooltip="Explorer">
+        <button class="toolbar-btn" id="toolbarExplorerBtn" title="Explorer" aria-label="Explorer" data-tooltip="Explorer">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
             <path d="M3 6.5A2.5 2.5 0 015.5 4H10l2 2h6.5A2.5 2.5 0 0121 8.5v8A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5v-10z"/>
           </svg>
         </button>
-        <button class="toolbar-btn" id="toolbarTerminalBtn" data-tooltip="Toggle terminal">
+        <button class="toolbar-btn" id="toolbarTerminalBtn" title="Toggle terminal" aria-label="Toggle terminal" data-tooltip="Toggle terminal">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="m7 8 4 4-4 4"/><path d="M13 16h4"/><rect x="3" y="4" width="18" height="16" rx="3"/>
           </svg>
         </button>
-        <button class="toolbar-btn" id="toolbarPanelBtn" data-tooltip="Toggle panel">
+        <button class="toolbar-btn" id="toolbarPanelBtn" title="Toggle panel" aria-label="Toggle panel" data-tooltip="Toggle panel">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/><path d="m8 9 3 3-3 3"/>
           </svg>
@@ -87,7 +94,7 @@
         <span>Progress</span>
         <div class="progress-head-actions">
           <span id="progressCount">0/0</span>
-          <button class="progress-hide-btn" id="progressHideBtn" title="Hide progress" aria-label="Hide progress">
+          <button class="progress-hide-btn" id="progressHideBtn" title="Collapse progress" aria-label="Collapse progress" data-tooltip="Collapse progress">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
           </button>
         </div>
@@ -97,69 +104,58 @@
 
     <!-- Chat -->
     <section class="workspace">
+      <div class="chat-stage">
     <section class="chat-container" id="chatContainer">
       <div class="welcome-screen" id="welcomeScreen">
         <h1 class="welcome-title" id="welcomeTitle">Build the thing you keep imagining.</h1>
-        <p class="welcome-sub">Локальный AI-ассистент. Работает на Ollama, без API-ключей. Спрашивайте о чём угодно — код, тексты, идеи, переводы.</p>
-        <p class="welcome-hint" id="welcomeHint">Выберите модель, чтобы начать.</p>
+        <p class="welcome-sub">Local AI assistant. Runs on Ollama, no API keys. Ask about code, text, ideas, translations, or anything else.</p>
+        <p class="welcome-hint" id="welcomeHint">Choose a model to start.</p>
         <div class="quick-actions">
-          <button class="quick-btn" data-prompt="Привет! Расскажи о себе и чем ты можешь помочь">Знакомство</button>
-          <button class="quick-btn" data-prompt="Объясни простыми словами, как работают нейросети">Объясни тему</button>
-          <button class="quick-btn" data-prompt="Напиши 5 идей для проекта на выходные">Идеи проекта</button>
-          <button class="quick-btn" data-prompt="Переведи на английский: Привет, как дела?">Перевод</button>
+          <button class="quick-btn" data-prompt="Hi! Tell me about yourself and how you can help">Intro</button>
+          <button class="quick-btn" data-prompt="Explain in simple words how neural networks work">Explain topic</button>
+          <button class="quick-btn" data-prompt="Write 5 project ideas for the weekend">Project ideas</button>
+          <button class="quick-btn" data-prompt="Translate to English: Privet, kak dela?">Translate</button>
         </div>
       </div>
       <div class="messages" id="messages"></div>
     </section>
-    <aside class="side-panel" id="sidePanel">
-      <div class="panel-header">
-        <span>Nebula actions</span>
-        <button class="panel-close" id="closePanelBtn">&times;</button>
-      </div>
-      <div class="panel-progress">
-        <div class="panel-progress-title">Coding preview</div>
-        <div class="panel-code-list" id="panelProgressList"></div>
-      </div>
-    </aside>
-    </section>
     <section class="terminal-panel terminal-panel-old" id="terminalPanel">
       <div class="terminal-tabs">
         <span>Terminal</span>
-        <button class="terminal-close" id="closeTerminalBtn">&times;</button>
+        <button class="terminal-close" id="closeTerminalBtn" title="Close terminal" aria-label="Close terminal" data-tooltip="Close terminal">&times;</button>
       </div>
       <div class="terminal-output" id="terminalOutput"></div>
       <div class="terminal-prompt"><span id="terminalCwd">PS</span><span>&gt;</span><input id="terminalInput" autocomplete="off" spellcheck="false"></div>
     </section>
 
-    <!-- Composer (внизу) -->
+    <!-- Composer -->
     <footer class="composer">
       <div class="composer-inner" id="composerInner">
 
-        <!-- Превью вложений -->
+        <!-- Attachments preview -->
         <div class="attachment-strip" id="attachmentStrip" style="display:none"></div>
 
-        <!-- Поле ввода по центру -->
+        <!-- Input field -->
         <div class="composer-field">
-          <button class="composer-attach" id="attachBtn" title="Прикрепить фото или файл">
+          <button class="composer-attach" id="attachBtn" title="Attach photo or file">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
           <input type="file" id="fileInput" accept="image/*,.txt,.md,.json,.js,.ts,.py,.html,.css,.java,.c,.cpp,.rs,.go" multiple style="display:none">
-          <textarea id="userInput" rows="1" placeholder="Спросите Nebula о чём угодно…" autofocus></textarea>
-          <button class="composer-send" id="sendBtn" disabled title="Отправить (Enter)">
+          <textarea id="userInput" rows="1" placeholder="Ask Nevo anything..." autofocus></textarea>
+          <button class="composer-send" id="sendBtn" disabled title="Send (Enter)">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
           </button>
-          <button class="composer-stop" id="stopBtn" style="display:none" title="Остановить">
+          <button class="composer-stop" id="stopBtn" style="display:none" title="Stop">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
           </button>
         </div>
 
-        <!-- Нижняя панель: модель слева, thinking справа -->
+        <!-- Bottom controls: model on the left, thinking on the right -->
         <div class="composer-controls">
           <div class="model-selector" id="modelSelector">
-            <button class="model-btn" id="modelBtn">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.2 4.2l4.3 4.3m7 7l4.3 4.3M1 12h6m10 0h6M4.2 19.8l4.3-4.3m7-7l4.3-4.3"/></svg>
-              <span class="model-btn-label" id="modelLabel">Выбрать модель</span>
-              <svg viewBox="0 0 24 24" width="10" height="10"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
+            <button class="model-btn" id="modelBtn" title="Choose model" aria-label="Choose model" data-tooltip="Choose model">
+              <span class="model-btn-label" id="modelLabel">Choose model</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <div class="model-dropdown" id="modelDropdown"></div>
           </div>
@@ -171,7 +167,7 @@
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
                 </svg>
                 <span id="accessLabel">Ask before changes</span>
-                <svg viewBox="0 0 24 24" width="10" height="10"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
               <div class="access-dropdown" id="accessDropdown">
                 <div class="access-item active" data-access="ask">
@@ -192,10 +188,10 @@
                 </div>
               </div>
             </div>
-            <button class="think-btn" id="thinkBtn" title="Уровень размышления модели">
+            <button class="think-btn" id="thinkBtn" title="Thinking level" aria-label="Thinking level" data-tooltip="Thinking level">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0012 2z"/></svg>
               <span id="thinkLabel">Thinking: Medium</span>
-              <svg viewBox="0 0 24 24" width="10" height="10"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <div class="think-dropdown" id="thinkDropdown">
               <div class="think-item" data-think="max">Max thinking lvl</div>
@@ -209,6 +205,20 @@
 
       </div>
     </footer>
+      </div>
+      <aside class="side-panel" id="sidePanel">
+        <div class="panel-header">
+          <span>Nevo actions</span>
+          <button class="panel-close" id="closePanelBtn" title="Close panel" aria-label="Close panel" data-tooltip="Close panel">&times;</button>
+        </div>
+        <div class="panel-progress">
+          <div class="panel-progress-title">Coding preview</div>
+          <div class="panel-file-tabs" id="panelFileTabs" style="display:none"></div>
+          <div class="panel-file-viewer" id="panelFileViewer" style="display:none"></div>
+          <div class="panel-code-list" id="panelProgressList"></div>
+        </div>
+      </aside>
+    </section>
 
   </main>
 </div>
@@ -217,7 +227,9 @@
   <div class="modal settings-modal">
     <div class="modal-header">
       <h2>Settings</h2>
-      <button class="modal-close" id="closeSettingsBtn">&times;</button>
+      <button class="modal-close" id="closeSettingsBtn" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
     <div class="modal-body settings-body">
       <section class="settings-section">
@@ -228,6 +240,17 @@
         <div class="settings-segment" id="themeSegment">
           <button type="button" data-theme="dark">Dark</button>
           <button type="button" data-theme="light">Light</button>
+        </div>
+      </section>
+      <section class="settings-section">
+        <div>
+          <div class="settings-title">Compute mode</div>
+          <div class="settings-desc">Choose how local models should run.</div>
+        </div>
+        <div class="settings-segment" id="computeSegment">
+          <button type="button" data-compute="auto">Auto</button>
+          <button type="button" data-compute="gpu">GPU</button>
+          <button type="button" data-compute="cpu">CPU</button>
         </div>
       </section>
       <section class="settings-block">
@@ -243,13 +266,15 @@
 <div class="modal-overlay" id="modelsModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>Модели</h2>
+      <h2>Р СљР С•Р Т‘Р ВµР В»Р С‘</h2>
       <div class="modal-header-actions">
-        <button class="modal-close" id="closeModelsBtn">&times;</button>
+        <button class="modal-close" id="closeModelsBtn" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
       </div>
     </div>
     <div class="modal-body">
-      <input type="text" id="modelsSearch" class="catalog-search" placeholder="Поиск моделей…">
+      <input type="text" id="modelsSearch" class="catalog-search" placeholder="Р СџР С•Р С‘РЎРѓР С” Р СР С•Р Т‘Р ВµР В»Р ВµР в„–РІР‚В¦">
       <div id="modelsModalBody"></div>
     </div>
   </div>
@@ -259,12 +284,14 @@
 <div class="modal-overlay" id="groupModal">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h2 id="groupModalTitle">Новая папка</h2>
-      <button class="modal-close" id="closeGroupBtn">&times;</button>
+      <h2 id="groupModalTitle">Р СњР С•Р Р†Р В°РЎРЏ Р С—Р В°Р С—Р С”Р В°</h2>
+      <button class="modal-close" id="closeGroupBtn" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
-      <input type="text" id="groupInput" class="catalog-search" placeholder="Название папки…" style="margin-bottom:12px">
-      <button class="catalog-btn primary" id="saveGroupBtn" style="width:100%">Создать</button>
+      <input type="text" id="groupInput" class="catalog-search" placeholder="Р СњР В°Р В·Р Р†Р В°Р Р…Р С‘Р Вµ Р С—Р В°Р С—Р С”Р С‘РІР‚В¦" style="margin-bottom:12px">
+      <button class="catalog-btn primary" id="saveGroupBtn" style="width:100%">Р РЋР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ</button>
     </div>
   </div>
 </div>
@@ -273,10 +300,12 @@
   <div class="modal modal-sm approval-card">
     <div class="modal-header">
       <h2 id="approvalTitle">Ask before changes</h2>
-      <button class="modal-close" id="approvalCloseBtn">&times;</button>
+      <button class="modal-close" id="approvalCloseBtn" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
     <div class="modal-body">
-      <p class="approval-text" id="approvalText">Nebula wants to edit a file.</p>
+      <p class="approval-text" id="approvalText">Nevo wants to edit a file.</p>
       <button class="catalog-btn primary approval-action" id="approvalAcceptBtn">Accept</button>
       <button class="catalog-btn approval-action" id="approvalAcceptChatBtn">Accept in this chat</button>
       <button class="catalog-btn danger approval-action" id="approvalDenyBtn">Denied</button>
@@ -286,7 +315,7 @@
 
 <div class="setup-sheet" id="setupSheet" aria-hidden="true">
   <div class="setup-card">
-    <div class="setup-title" id="setupTitle">Уточнить задачу</div>
+    <div class="setup-title" id="setupTitle">Р Р€РЎвЂљР С•РЎвЂЎР Р…Р С‘РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎРЎС“</div>
     <div class="setup-question" id="setupQuestion"></div>
     <div class="setup-options" id="setupOptions"></div>
   </div>

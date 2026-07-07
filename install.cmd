@@ -1,8 +1,8 @@
 @echo off
-title Nebula - Install
+title Nevo - Install
 echo.
 echo   ========================================
-echo          Nebula - Installation
+echo          Nevo - Installation
 echo   ========================================
 echo.
 
@@ -46,7 +46,7 @@ if %errorlevel% neq 0 (
 echo.
 echo   ========================================
 echo   Done! Now run start.cmd
-echo   Projects will be saved to: %USERPROFILE%\NebulaProject
+echo   Projects will be saved to: %USERPROFILE%\NevoProject
 echo   ========================================
 echo.
 pause

@@ -1,14 +1,16 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn, execSync, exec } = require('child_process');
 
 // ============================================================
-//  Папки данных Nebula
+//  Nevo data folders
 // ============================================================
-const DATA_DIR = path.join(os.homedir(), '.nebula-data');
-const PROJECTS_DIR = path.join(os.homedir(), 'NebulaProject');
+const LEGACY_DATA_DIR = path.join(os.homedir(), `.ne${'bula'}-data`);
+const DATA_DIR = path.join(os.homedir(), '.nevo-data');
+const LEGACY_PROJECTS_DIR = path.join(os.homedir(), `Ne${'bula'}Project`);
+const PROJECTS_DIR = path.join(os.homedir(), 'NevoProject');
 const CHATS_FILE = path.join(DATA_DIR, 'data.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const OLLAMA_WINDOWS_INSTALL_URL = 'https://ollama.com/install.ps1';
@@ -19,6 +21,14 @@ const ELECTRON_CACHE_DIR = path.join(DATA_DIR, 'cache');
 const ELECTRON_GPU_CACHE_DIR = path.join(DATA_DIR, 'gpu-cache');
 
 function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR) && fs.existsSync(LEGACY_DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    for (const name of ['data.json', 'settings.json']) {
+      const oldPath = path.join(LEGACY_DATA_DIR, name);
+      const nextPath = path.join(DATA_DIR, name);
+      if (fs.existsSync(oldPath) && !fs.existsSync(nextPath)) fs.copyFileSync(oldPath, nextPath);
+    }
+  }
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   for (const dir of [ELECTRON_USER_DATA_DIR, ELECTRON_CACHE_DIR, ELECTRON_GPU_CACHE_DIR]) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -32,6 +42,13 @@ app.commandLine.appendSwitch('disk-cache-dir', ELECTRON_CACHE_DIR);
 app.commandLine.appendSwitch('gpu-cache-dir', ELECTRON_GPU_CACHE_DIR);
 
 function ensureProjectsDir() {
+  if (!fs.existsSync(PROJECTS_DIR) && fs.existsSync(LEGACY_PROJECTS_DIR)) {
+    try {
+      fs.renameSync(LEGACY_PROJECTS_DIR, PROJECTS_DIR);
+    } catch (e) {
+      // If migration is blocked, keep going with a fresh NevoProject folder.
+    }
+  }
   if (!fs.existsSync(PROJECTS_DIR)) fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 }
 
@@ -52,7 +69,7 @@ function getUniqueProjectFolderName(baseName, currentName = null) {
     fs.existsSync(path.join(PROJECTS_DIR, candidate)) &&
     candidate.toLowerCase() !== String(currentName || '').toLowerCase()
   ) {
-    candidate = base === 'NebulaProject' ? `${base}${index}` : `${base} ${index}`;
+    candidate = base === 'NevoProject' ? `${base}${index}` : `${base} ${index}`;
     index += 1;
   }
   return candidate;
@@ -128,7 +145,7 @@ async function installPythonPackages(packages, folderName) {
     .filter(pkg => /^[a-zA-Z0-9_.-]+$/.test(pkg))));
   if (!safePackages.length) return { ok: true, packages: [] };
 
-  const folder = ensureProjectFolder(folderName || 'NebulaProject', folderName || 'NebulaProject');
+  const folder = ensureProjectFolder(folderName || 'NevoProject', folderName || 'NevoProject');
   const run = (command, args) => new Promise(resolve => {
     const child = spawn(command, args, {
       cwd: folder.path,
@@ -161,8 +178,35 @@ async function installPythonPackages(packages, folderName) {
   };
 }
 
+async function installNodePackages(packages, folderName) {
+  ensureProjectsDir();
+  const safePackages = Array.from(new Set((packages || [])
+    .map(pkg => String(pkg || '').trim())
+    .filter(pkg => /^(?:@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(pkg))));
+  if (!safePackages.length) return { ok: true, packages: [] };
+
+  const folder = ensureProjectFolder(folderName || 'NevoProject', folderName || 'NevoProject');
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  return new Promise(resolve => {
+    const child = spawn(command, ['install', ...safePackages], {
+      cwd: folder.path,
+      windowsHide: true,
+      shell: false
+    });
+    let output = '';
+    child.stdout.on('data', data => { output += data.toString(); });
+    child.stderr.on('data', data => { output += data.toString(); });
+    child.on('error', err => resolve({ ok: false, error: err.message, output }));
+    child.on('close', code => {
+      resolve(code === 0
+        ? { ok: true, packages: safePackages, output }
+        : { ok: false, packages: safePackages, output, error: `npm exited with code ${code}` });
+    });
+  });
+}
+
 // ============================================================
-//  Хранилище чатов / групп / настроек
+//  РҐСЂР°РЅРёР»РёС‰Рµ С‡Р°С‚РѕРІ / РіСЂСѓРїРї / РЅР°СЃС‚СЂРѕРµРє
 // ============================================================
 function loadData() {
   ensureDataDir();
@@ -170,7 +214,7 @@ function loadData() {
     if (fs.existsSync(CHATS_FILE)) {
       return JSON.parse(fs.readFileSync(CHATS_FILE, 'utf-8'));
     }
-  } catch (e) { /* corrupt — start fresh */ }
+  } catch (e) { /* corrupt вЂ” start fresh */ }
   return { groups: [], chats: [] };
 }
 
@@ -199,7 +243,7 @@ function saveSettings(s) {
 }
 
 // ============================================================
-//  Окно
+//  РћРєРЅРѕ
 // ============================================================
 function createWindow() {
   const win = new BrowserWindow({
@@ -207,7 +251,8 @@ function createWindow() {
     height: 780,
     minWidth: 820,
     minHeight: 520,
-    title: 'Nebula',
+    title: 'Nevo',
+    icon: path.join(__dirname, '..', 'resources', process.platform === 'win32' ? 'nevo-logo.ico' : 'nevo-logo.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -224,7 +269,7 @@ function createWindow() {
 }
 
 // ============================================================
-//  Автозапуск Ollama
+//  РђРІС‚РѕР·Р°РїСѓСЃРє Ollama
 // ============================================================
 let ollamaProc = null;
 let ollamaInstallState = {
@@ -247,12 +292,12 @@ function bundledOllamaCandidates() {
 }
 
 function findOllamaExe() {
-  // 1) bundled with Nebula
+  // 1) bundled with Nevo
   for (const c of bundledOllamaCandidates()) {
     if (fs.existsSync(c)) return c;
   }
 
-  // 2) в PATH
+  // 2) РІ PATH
   try {
     const lookup = process.platform === 'win32' ? 'where ollama' : 'command -v ollama';
     const found = execSync(lookup, {
@@ -263,7 +308,7 @@ function findOllamaExe() {
     if (found && fs.existsSync(found)) return found;
   } catch (e) { /* not in PATH */ }
 
-  // 3) типичные расположения на Windows
+  // 3) С‚РёРїРёС‡РЅС‹Рµ СЂР°СЃРїРѕР»РѕР¶РµРЅРёСЏ РЅР° Windows
   const candidates = [
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe'),
     'C:\\Program Files\\Ollama\\ollama.exe',
@@ -385,7 +430,7 @@ function isOllamaResponding() {
 }
 
 async function ensureOllamaRunning() {
-  // Уже запущен?
+  // РЈР¶Рµ Р·Р°РїСѓС‰РµРЅ?
   if (await isOllamaResponding()) return true;
 
   let exe = findOllamaExe();
@@ -395,25 +440,35 @@ async function ensureOllamaRunning() {
   }
   if (!exe) return false;
 
-  // Запускаем ollama serve
+  const savedSettings = loadSettings();
+  const computeMode = savedSettings.computeMode || 'auto';
+  const ollamaEnv = {
+    ...process.env,
+    OLLAMA_HOST: '127.0.0.1:11434',
+    OLLAMA_FLASH_ATTENTION: process.env.OLLAMA_FLASH_ATTENTION || '1',
+    OLLAMA_KEEP_ALIVE: process.env.OLLAMA_KEEP_ALIVE || '10m'
+  };
+  if (computeMode === 'cpu') {
+    ollamaEnv.OLLAMA_LLM_LIBRARY = 'cpu';
+    ollamaEnv.CUDA_VISIBLE_DEVICES = '';
+  } else if (computeMode === 'gpu') {
+    delete ollamaEnv.OLLAMA_LLM_LIBRARY;
+  }
+
+  // Р—Р°РїСѓСЃРєР°РµРј ollama serve
   try {
     ollamaProc = spawn(exe, ['serve'], {
       windowsHide: true,
       detached: true,
       stdio: 'ignore',
-      env: {
-        ...process.env,
-        OLLAMA_HOST: '127.0.0.1:11434',
-        OLLAMA_FLASH_ATTENTION: process.env.OLLAMA_FLASH_ATTENTION || '1',
-        OLLAMA_KEEP_ALIVE: process.env.OLLAMA_KEEP_ALIVE || '10m'
-      }
+      env: ollamaEnv
     });
     ollamaProc.unref();
   } catch (e) {
     return false;
   }
 
-  // Ждём готовности (до ~30 секунд)
+  // Р–РґС‘Рј РіРѕС‚РѕРІРЅРѕСЃС‚Рё (РґРѕ ~30 СЃРµРєСѓРЅРґ)
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 500));
     if (await isOllamaResponding()) return true;
@@ -424,7 +479,7 @@ async function ensureOllamaRunning() {
 app.whenReady().then(async () => {
   ensureDataDir();
   createWindow();
-  ensureOllamaRunning();   // фоновая попытка автозапуска / автоустановки
+  ensureOllamaRunning();   // С„РѕРЅРѕРІР°СЏ РїРѕРїС‹С‚РєР° Р°РІС‚РѕР·Р°РїСѓСЃРєР° / Р°РІС‚РѕСѓСЃС‚Р°РЅРѕРІРєРё
 });
 
 app.on('window-all-closed', () => {
@@ -435,7 +490,7 @@ app.on('activate', () => {
 });
 
 // ============================================================
-//  IPC: ЧАТЫ / ГРУППЫ
+//  IPC: Р§РђРўР« / Р“Р РЈРџРџР«
 // ============================================================
 ipcMain.handle('data:get', async () => {
   return loadData();
@@ -447,7 +502,7 @@ ipcMain.handle('data:save', async (_e, data) => {
 });
 
 // ============================================================
-//  IPC: НАСТРОЙКИ
+//  IPC: РќРђРЎРўР РћР™РљР
 // ============================================================
 ipcMain.handle('settings:get', async () => loadSettings());
 ipcMain.handle('settings:save', async (_e, s) => { saveSettings(s); return { ok: true }; });
@@ -495,7 +550,7 @@ ipcMain.handle('ollama:ensure-running', async () => {
   return { ok, running: ok };
 });
 
-// Скачать модель с прогрессом
+// РЎРєР°С‡Р°С‚СЊ РјРѕРґРµР»СЊ СЃ РїСЂРѕРіСЂРµСЃСЃРѕРј
 ipcMain.handle('ollama:pull', async (event, modelName) => {
   try {
     const response = await fetch(`${OLLAMA_HOST}/api/pull`, {
@@ -523,7 +578,7 @@ ipcMain.handle('ollama:pull', async (event, modelName) => {
           const total = json.total || 0;
           const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-          // Шлём прогресс только когда он меняется
+          // РЁР»С‘Рј РїСЂРѕРіСЂРµСЃСЃ С‚РѕР»СЊРєРѕ РєРѕРіРґР° РѕРЅ РјРµРЅСЏРµС‚СЃСЏ
           if (percent !== lastPercent || status.includes('success') || status.includes('verifying')) {
             if (event.sender.isDestroyed && event.sender.isDestroyed()) return { ok: true };
             event.sender.send('pull-progress', {
@@ -544,7 +599,7 @@ ipcMain.handle('ollama:pull', async (event, modelName) => {
   }
 });
 
-// Удалить модель
+// РЈРґР°Р»РёС‚СЊ РјРѕРґРµР»СЊ
 ipcMain.handle('ollama:delete', async (_e, modelName) => {
   try {
     const resp = await fetch(`${OLLAMA_HOST}/api/delete`, {
@@ -552,16 +607,28 @@ ipcMain.handle('ollama:delete', async (_e, modelName) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: modelName })
     });
-    return { ok: resp.ok };
+    if (!resp.ok) {
+      const error = await resp.text().catch(() => '');
+      return { ok: false, error: error || `HTTP ${resp.status}` };
+    }
+    return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
   }
 });
 
-// Путь к ollama.exe (для подсказок в UI)
+// РџСѓС‚СЊ Рє ollama.exe (РґР»СЏ РїРѕРґСЃРєР°Р·РѕРє РІ UI)
+ipcMain.handle('node:install-packages', async (_e, packages, folderName) => {
+  try {
+    return await installNodePackages(packages, folderName);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('ollama:path', async () => findOllamaExe());
 
-// Открыть ссылку во внешнем браузере
+// РћС‚РєСЂС‹С‚СЊ СЃСЃС‹Р»РєСѓ РІРѕ РІРЅРµС€РЅРµРј Р±СЂР°СѓР·РµСЂРµ
 ipcMain.handle('shell:open', async (_e, url) => {
   shell.openExternal(url);
   return { ok: true };

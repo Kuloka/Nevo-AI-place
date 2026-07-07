@@ -30,4 +30,5 @@ contextBridge.exposeInMainWorld('api', {
   writeProjectFile: (folderName, filePath, content) => ipcRenderer.invoke('projects:write-file', folderName, filePath, content),
   projectFileExists: (folderName, filePath) => ipcRenderer.invoke('projects:file-exists', folderName, filePath),
   installPythonPackages: (packages, folderName) => ipcRenderer.invoke('python:install-packages', packages, folderName),
+  installNodePackages: (packages, folderName) => ipcRenderer.invoke('node:install-packages', packages, folderName),
 });

@@ -1,6 +1,6 @@
-# Nebula AI Place
+# Nevo AI Place
 
-Nebula AI Place is a local-first desktop AI workspace built with Electron and Ollama. It keeps chats and generated projects on your machine, can write project files, preview coding activity, and open the project folder directly from the app.
+Nevo AI Place is a local-first desktop AI workspace built with Electron and Ollama. It keeps chats and generated projects on your machine, can write project files, preview coding activity, and open the project folder directly from the app.
 
 ## Preview
 
@@ -14,7 +14,7 @@ Nebula AI Place is a local-first desktop AI workspace built with Electron and Ol
 
 - Local Ollama-based chat and coding assistant.
 - Model catalog with downloadable Ollama models.
-- Project folders stored in `~/NebulaProject`.
+- Project folders stored in `~/NevoProject`.
 - Cross-platform desktop shell for Windows, macOS, and Linux.
 - Dark and light themes with downloadable interface language packs.
 - Optional Python package installation for generated Python projects.
@@ -25,7 +25,7 @@ Nebula AI Place is a local-first desktop AI workspace built with Electron and Ol
 - npm.
 - Ollama installed or available in `PATH`.
 
-Nebula tries to start Ollama automatically. On Windows and Linux it can also attempt an automatic install. On macOS, install Ollama from the official app if it is not already available.
+Nevo tries to start Ollama automatically. On Windows and Linux it can also attempt an automatic install. On macOS, install Ollama from the official app if it is not already available.
 
 ## Run
 
@@ -54,10 +54,10 @@ npm run check
 
 ## Data Locations
 
-- App data: `~/.nebula-data`
-- Generated projects: `~/NebulaProject`
+- App data: `~/.nevo-data`
+- Generated projects: `~/NevoProject`
 - Optional bundled Ollama binary: `resources/ollama`
 
 ## Repository
 
-This folder is ready to be used as a Git repository named `Nebula AI Place` locally. Add a remote when you are ready to publish it.
+This folder is ready to be used as a Git repository named `Nevo AI Place` locally. Add a remote when you are ready to publish it.

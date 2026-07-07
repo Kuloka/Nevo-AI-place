@@ -1,8 +1,8 @@
 @echo off
-title Nebula
+title Nevo
 echo.
 echo   ========================================
-echo            Nebula - Starting
+echo            Nevo - Starting
 echo   ========================================
 echo.
 
@@ -21,7 +21,7 @@ if not exist "node_modules" (
     echo.
 )
 
-echo   [*] Starting Nebula...
-echo   [*] Projects folder: %USERPROFILE%\NebulaProject
+echo   [*] Starting Nevo...
+echo   [*] Projects folder: %USERPROFILE%\NevoProject
 echo.
 call npx electron .

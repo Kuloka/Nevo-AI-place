@@ -1,16 +1,37 @@
 {
-  "name": "nebula-ai-place",
+  "name": "nevo-ai-place",
   "version": "1.0.0",
-  "description": "Nebula AI Place - local AI coding assistant powered by Ollama",
+  "description": "Nevo - local AI coding assistant powered by Ollama",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check electron/main.js && node --check electron/preload.js && node --check renderer.js"
+    "check": "node --check electron/main.js && node --check electron/preload.js && node --check renderer.js",
+    "dist:win": "electron-builder --win portable"
   },
-  "productName": "Nebula AI Place",
+  "productName": "Nevo",
   "private": true,
+  "build": {
+    "appId": "ai.nevo.place",
+    "productName": "Nevo",
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!.git/**"
+    ],
+    "directories": {
+      "buildResources": "resources",
+      "output": "dist"
+    },
+    "win": {
+      "icon": "resources/nevo-logo.ico",
+      "target": [
+        "portable"
+      ]
+    }
+  },
   "devDependencies": {
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "electron-builder": "^26.15.3"
   }
 }
