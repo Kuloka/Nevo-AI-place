@@ -1,13 +1,19 @@
+<img width="2163" height="727" alt="ChatGPT Image 7 июл  2026 г , 23_16_07" src="https://github.com/user-attachments/assets/6f2ba66e-8445-4505-951c-af582c8c8284" />
+
 # Nevo AI Place
 
 Nevo AI Place is a local-first desktop AI workspace built with Electron and Ollama. It keeps chats and generated projects on your machine, can write project files, preview coding activity, and open the project folder directly from the app.
 
 ## Preview
 
-<img width="3004" height="1600" alt="ray-so-export" src="https://github.com/user-attachments/assets/fe2a7105-3bea-4cb4-9f56-50324b62b2ed" />
+<img width="3444" height="1632" alt="ray-so-export (1)" src="https://github.com/user-attachments/assets/2339dca0-eba1-48c8-bc8d-76ef40f3efb6" />
 
 
-<img width="3839" height="2080" alt="Снимок экрана 2026-07-06 163654" src="https://github.com/user-attachments/assets/91562a8b-1b7c-4237-8a47-84742f9be9f0" />
+
+
+
+<img width="3839" height="2090" alt="image" src="https://github.com/user-attachments/assets/2b706208-879a-4660-918e-57f15d60470f" />
+
 
 
 ## Features
