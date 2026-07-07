@@ -614,6 +614,9 @@
   function migrateBrandNamesInData() {
     let changed = false;
     const rename = value => String(value || "").replace(/^NevoProject/i, "NevoProject");
+    const corruptedDefaultChatTitles = [
+      "РќРѕРІС‹Р№ С‡Р°С‚"
+    ];
     data.groups.forEach(group => {
       const nextName = rename(group.name);
       const nextFolderName = rename(group.folderName || group.name);
@@ -623,6 +626,12 @@
       }
       if ((group.folderName || group.name) !== nextFolderName) {
         group.folderName = nextFolderName;
+        changed = true;
+      }
+    });
+    data.chats.forEach(chat => {
+      if (corruptedDefaultChatTitles.includes(String(chat.title || ""))) {
+        chat.title = "";
         changed = true;
       }
     });
@@ -3192,7 +3201,7 @@
 
     const title = document.createElement("span");
     title.className = "history-item-title";
-    title.textContent = c.title || "РќРѕРІС‹Р№ С‡Р°С‚";
+    title.textContent = c.title || t("newChat");
     item.appendChild(title);
 
     // РјРµРЅСЋ "РїРµСЂРµРјРµСЃС‚РёС‚СЊ"
