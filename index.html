@@ -107,6 +107,7 @@
       <div class="chat-stage">
     <section class="chat-container" id="chatContainer">
       <div class="welcome-screen" id="welcomeScreen">
+        <canvas class="threads-bg" id="threadsBg" aria-hidden="true"></canvas>
         <h1 class="welcome-title" id="welcomeTitle">Build the thing you keep imagining.</h1>
         <p class="welcome-sub">Local AI assistant. Runs on Ollama, no API keys. Ask about code, text, ideas, translations, or anything else.</p>
         <p class="welcome-hint" id="welcomeHint">Choose a model to start.</p>
@@ -274,6 +275,10 @@
       </div>
     </div>
     <div class="modal-body">
+      <div class="catalog-tabs" id="modelsCatalogTabs">
+        <button type="button" class="catalog-tab active" data-tab="text">Text AI</button>
+        <button type="button" class="catalog-tab" data-tab="generation">Generation AI</button>
+      </div>
       <input type="text" id="modelsSearch" class="catalog-search" placeholder="Search models...">
       <div id="modelsModalBody"></div>
     </div>

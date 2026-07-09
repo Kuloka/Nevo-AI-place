@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn, execSync, exec } = require('child_process');
+const { getFluxStatus, downloadFluxVariant, runFluxGenerate } = require('./flux-backend');
 
 // ============================================================
 //  Nevo data folders
@@ -19,6 +20,8 @@ const OLLAMA_HOST = 'http://127.0.0.1:11434';
 const ELECTRON_USER_DATA_DIR = path.join(DATA_DIR, 'electron-user-data');
 const ELECTRON_CACHE_DIR = path.join(DATA_DIR, 'cache');
 const ELECTRON_GPU_CACHE_DIR = path.join(DATA_DIR, 'gpu-cache');
+const FLUX_MODELS_DIR = path.join(DATA_DIR, 'models', 'flux');
+const FLUX_OUTPUT_DIR = path.join(DATA_DIR, 'generated-images');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR) && fs.existsSync(LEGACY_DATA_DIR)) {
@@ -31,6 +34,9 @@ function ensureDataDir() {
   }
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   for (const dir of [ELECTRON_USER_DATA_DIR, ELECTRON_CACHE_DIR, ELECTRON_GPU_CACHE_DIR]) {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  }
+  for (const dir of [FLUX_MODELS_DIR, FLUX_OUTPUT_DIR]) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -81,6 +87,65 @@ function ensureProjectFolder(name, preferredFolderName = null) {
   const folderPath = path.join(PROJECTS_DIR, folderName);
   if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
   return { folderName, path: folderPath };
+}
+
+function decodeHtmlEntities(text) {
+  return String(text || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'");
+}
+
+function stripHtml(text) {
+  return decodeHtmlEntities(String(text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
+function normalizeResultUrl(raw) {
+  try {
+    const decoded = decodeHtmlEntities(raw);
+    const url = new URL(decoded, 'https://duckduckgo.com');
+    const uddg = url.searchParams.get('uddg');
+    return uddg ? decodeURIComponent(uddg) : url.toString();
+  } catch (err) {
+    return decodeHtmlEntities(raw || '');
+  }
+}
+
+function domainFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (err) {
+    return '';
+  }
+}
+
+async function internetSearch(query) {
+  const q = String(query || '').trim().slice(0, 300);
+  if (!q) return { ok: false, error: 'Empty search query.' };
+
+  const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 Nevo/1.0',
+      'Accept': 'text/html,application/xhtml+xml'
+    }
+  });
+  if (!response.ok) return { ok: false, error: `Search HTTP ${response.status}` };
+  const html = await response.text();
+  const results = [];
+  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+  let match;
+  while ((match = re.exec(html)) && results.length < 5) {
+    const resultUrl = normalizeResultUrl(match[1]);
+    const title = stripHtml(match[2]);
+    const snippet = stripHtml(match[3]);
+    const domain = domainFromUrl(resultUrl);
+    if (title && resultUrl) results.push({ title, url: resultUrl, domain, snippet });
+  }
+  return { ok: true, query: q, results };
 }
 
 function renameProjectFolder(oldFolderName, newName) {
@@ -146,35 +211,82 @@ async function installPythonPackages(packages, folderName) {
   if (!safePackages.length) return { ok: true, packages: [] };
 
   const folder = ensureProjectFolder(folderName || 'NevoProject', folderName || 'NevoProject');
-  const run = (command, args) => new Promise(resolve => {
+  const run = (command, args, timeoutMs = 20 * 60 * 1000) => new Promise(resolve => {
     const child = spawn(command, args, {
       cwd: folder.path,
       windowsHide: true,
       shell: false
     });
     let output = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: 'Python package install timed out.', output });
+    }, timeoutMs);
     child.stdout.on('data', data => { output += data.toString(); });
     child.stderr.on('data', data => { output += data.toString(); });
-    child.on('error', err => resolve({ ok: false, error: err.message, output }));
-    child.on('close', code => resolve({ ok: code === 0, code, output }));
+    child.on('error', err => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: err.message, output });
+    });
+    child.on('close', code => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, code, output });
+    });
   });
 
-  const candidates = process.platform === 'win32'
-    ? [['py', ['-m', 'pip', 'install']], ['python', ['-m', 'pip', 'install']], ['python3', ['-m', 'pip', 'install']]]
-    : [['python3', ['-m', 'pip', 'install']], ['python', ['-m', 'pip', 'install']]];
+  const pythonCandidates = process.platform === 'win32'
+    ? [['py', ['-3']], ['python', []], ['python3', []]]
+    : [['python3', []], ['python', []]];
+
+  const pipModes = [
+    [],
+    ['--user']
+  ];
 
   let last = null;
-  for (const [command, baseArgs] of candidates) {
-    const result = await run(command, [...baseArgs, ...safePackages]);
-    if (result.ok) return { ok: true, packages: safePackages, output: result.output };
-    last = result;
+  let foundPython = false;
+  for (const [command, pythonArgs] of pythonCandidates) {
+    const version = await run(command, [...pythonArgs, '--version'], 30000);
+    if (!version.ok) {
+      last = version;
+      continue;
+    }
+    foundPython = true;
+
+    await run(command, [...pythonArgs, '-m', 'ensurepip', '--upgrade'], 2 * 60 * 1000);
+
+    for (const modeArgs of pipModes) {
+      const args = [
+        ...pythonArgs,
+        '-m',
+        'pip',
+        'install',
+        '--disable-pip-version-check',
+        '--prefer-binary',
+        ...modeArgs,
+        ...safePackages
+      ];
+      const result = await run(command, args);
+      if (result.ok) return { ok: true, packages: safePackages, output: result.output };
+      last = result;
+    }
   }
 
+  if (!foundPython) {
+    return {
+      ok: false,
+      packages: safePackages,
+      output: last?.output || '',
+      error: 'Python was not found.'
+    };
+  }
+
+  const outputTail = String(last?.output || '').slice(-1200);
   return {
     ok: false,
     packages: safePackages,
     output: last?.output || '',
-    error: last?.error || `pip exited with code ${last?.code ?? 'unknown'}`
+    error: [last?.error || `pip exited with code ${last?.code ?? 'unknown'}`, outputTail].filter(Boolean).join('\n')
   };
 }
 
@@ -617,6 +729,43 @@ ipcMain.handle('ollama:delete', async (_e, modelName) => {
   }
 });
 
+ipcMain.handle('flux:status', async () => {
+  try {
+    return await getFluxStatus(FLUX_MODELS_DIR);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('flux:download', async (event, variantId) => {
+  try {
+    return await downloadFluxVariant(FLUX_MODELS_DIR, variantId, progress => {
+      if (event.sender.isDestroyed && event.sender.isDestroyed()) return;
+      event.sender.send('flux-progress', progress);
+    });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('flux:generate', async (event, payload = {}) => {
+  try {
+    return await runFluxGenerate({
+      modelsDir: FLUX_MODELS_DIR,
+      outputDir: FLUX_OUTPUT_DIR,
+      prompt: String(payload.prompt || ''),
+      variantId: payload.variantId || 'fp8',
+      computeMode: payload.computeMode || 'auto',
+      onProgress: progress => {
+        if (event.sender.isDestroyed && event.sender.isDestroyed()) return;
+        event.sender.send('flux-generate-progress', progress);
+      }
+    });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // РџСѓС‚СЊ Рє ollama.exe (РґР»СЏ РїРѕРґСЃРєР°Р·РѕРє РІ UI)
 ipcMain.handle('node:install-packages', async (_e, packages, folderName) => {
   try {
@@ -627,6 +776,14 @@ ipcMain.handle('node:install-packages', async (_e, packages, folderName) => {
 });
 
 ipcMain.handle('ollama:path', async () => findOllamaExe());
+
+ipcMain.handle('internet:search', async (_e, query) => {
+  try {
+    return await internetSearch(query);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
 
 // РћС‚РєСЂС‹С‚СЊ СЃСЃС‹Р»РєСѓ РІРѕ РІРЅРµС€РЅРµРј Р±СЂР°СѓР·РµСЂРµ
 ipcMain.handle('shell:open', async (_e, url) => {

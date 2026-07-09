@@ -21,8 +21,24 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('pull-progress', handler);
   },
 
+  // Flux image models
+  fluxStatus:      ()              => ipcRenderer.invoke('flux:status'),
+  downloadFluxModel: (variantId)   => ipcRenderer.invoke('flux:download', variantId),
+  generateFluxImage: (payload)     => ipcRenderer.invoke('flux:generate', payload),
+  onFluxGenerateProgress: (cb)     => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('flux-generate-progress', handler);
+    return () => ipcRenderer.removeListener('flux-generate-progress', handler);
+  },
+  onFluxProgress: (cb)             => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('flux-progress', handler);
+    return () => ipcRenderer.removeListener('flux-progress', handler);
+  },
+
   // Внешние ссылки
   openExternal:   (url)           => ipcRenderer.invoke('shell:open', url),
+  internetSearch: (query)         => ipcRenderer.invoke('internet:search', query),
   openProjectsFolder: ()          => ipcRenderer.invoke('projects:open-folder'),
   getProjectsRoot: ()             => ipcRenderer.invoke('projects:get-root'),
   ensureProjectFolder: (name, preferredFolderName) => ipcRenderer.invoke('projects:ensure-folder', name, preferredFolderName),
