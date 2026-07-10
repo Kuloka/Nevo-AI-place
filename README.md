@@ -1,4 +1,6 @@
-<img width="2163" height="727" alt="ChatGPT Image 7 июл  2026 г , 23_16_07" src="https://github.com/user-attachments/assets/6f2ba66e-8445-4505-951c-af582c8c8284" />
+<img width="1037" height="274" alt="image" src="https://github.com/user-attachments/assets/aaed2667-dff7-4612-ba08-b880d3c320cf" />
+
+
 
 # Nevo AI Place
 
