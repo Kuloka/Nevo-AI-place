@@ -358,7 +358,7 @@ html, body {
   background: var(--bg-active);
 }
 
-/* РіСЂСѓРїРїС‹ */
+/* группы */
 .chat-group { margin-bottom: 2px; }
 .chat-group-header {
   display: flex; align-items: center; gap: 4px;
@@ -385,7 +385,7 @@ html, body {
 .chat-group-body { display: block; }
 .chat-group-body.collapsed { display: none; }
 
-/* РѕР±С‹С‡РЅС‹Рµ С‡Р°С‚С‹ (Р±РµР· РіСЂСѓРїРїС‹) */
+/* обычные чаты (без группы) */
 .history-item {
   display: flex; align-items: center; gap: 6px;
   padding: 9px 10px; border-radius: 8px;
@@ -1443,22 +1443,91 @@ body.theme-light .image-gen-dots span {
 .attachment-remove:hover { background: var(--red); }
 
 .composer-field {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--bg-input);
-  border: 1px solid rgba(255, 90, 54, 0.38);
-  border-radius: 16px;
-  padding: 7px 8px 7px 10px;
+  --electric-border-color: #f97316;
+  --electric-light-color: #f97316;
+  --electric-light-color: oklch(from var(--electric-border-color) l c h);
   position: relative;
-  overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(255, 90, 54, 0.06);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: var(--bg-input);
+  isolation: isolate;
+  overflow: visible;
+  box-shadow: none;
+}
+.composer-field-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px 7px 10px;
+  border-radius: inherit;
+  background: var(--bg-input);
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
 }
 .composer-field:focus-within {
-  border-color: rgba(255, 90, 54, 0.7);
-  box-shadow: 0 0 0 1px rgba(255, 90, 54, 0.16);
+  border-color: transparent;
+  box-shadow: none;
 }
 body.is-generating .composer-field {
-  border-color: rgba(255, 90, 54, 0.6);
+  border-color: transparent;
+  box-shadow: none;
+}
+.eb-canvas-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
+}
+.eb-canvas {
+  display: block;
+}
+.eb-layers {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
+}
+.eb-glow-1,
+.eb-glow-2,
+.eb-background-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.eb-glow-1 {
+  border: 2px solid rgba(249, 115, 22, 0.6);
+  filter: blur(1px);
+}
+.eb-glow-2 {
+  border: 2px solid var(--electric-light-color);
+  filter: blur(4px);
+}
+.eb-background-glow {
+  z-index: -1;
+  transform: scale(1.1);
+  filter: blur(32px);
+  opacity: 0.3;
+  background: linear-gradient(-30deg, var(--electric-light-color), transparent, var(--electric-border-color));
+}
+body.is-generating .eb-canvas-container,
+body.is-generating .eb-layers {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 .composer-attach {
@@ -1498,7 +1567,7 @@ body.is-generating .composer-field {
 .composer-stop { background: var(--bg-hover); color: var(--text-primary); }
 .composer-stop:hover { background: var(--bg-active); }
 
-/* РќРёР¶РЅСЏСЏ РїР°РЅРµР»СЊ composer: РјРѕРґРµР»СЊ + thinking */
+/* Нижняя панель composer: модель + thinking */
 .composer-controls {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 8px 0; gap: 8px;
@@ -1585,7 +1654,7 @@ body.is-generating .composer-field {
 .access-title { font-size: 13px; font-weight: 650; color: var(--text-primary); }
 .access-desc { margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
 .access-item.active::after {
-  content: "вњ“";
+  content: "✓";
   float: right;
   color: var(--text-secondary);
 }

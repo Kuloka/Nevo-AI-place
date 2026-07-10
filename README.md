@@ -43,7 +43,7 @@ npm start
 Windows users can also run:
 
 ```bat
-start.cmd
+start.vbs
 ```
 
 macOS and Linux users can run:

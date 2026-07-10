@@ -45,7 +45,7 @@ if %errorlevel% neq 0 (
 
 echo.
 echo   ========================================
-echo   Done! Now run start.cmd
+echo   Done! Now run start.vbs without a terminal window
 echo   Projects will be saved to: %USERPROFILE%\NevoProject
 echo   ========================================
 echo.

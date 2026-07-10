@@ -318,7 +318,7 @@ async function installNodePackages(packages, folderName) {
 }
 
 // ============================================================
-//  РҐСЂР°РЅРёР»РёС‰Рµ С‡Р°С‚РѕРІ / РіСЂСѓРїРї / РЅР°СЃС‚СЂРѕРµРє
+//  Хранилище чатов / групп / настроек
 // ============================================================
 function loadData() {
   ensureDataDir();
@@ -326,7 +326,7 @@ function loadData() {
     if (fs.existsSync(CHATS_FILE)) {
       return JSON.parse(fs.readFileSync(CHATS_FILE, 'utf-8'));
     }
-  } catch (e) { /* corrupt вЂ” start fresh */ }
+  } catch (e) { /* corrupt — start fresh */ }
   return { groups: [], chats: [] };
 }
 
@@ -355,7 +355,7 @@ function saveSettings(s) {
 }
 
 // ============================================================
-//  РћРєРЅРѕ
+//  Окно
 // ============================================================
 function createWindow() {
   const win = new BrowserWindow({
@@ -381,7 +381,7 @@ function createWindow() {
 }
 
 // ============================================================
-//  РђРІС‚РѕР·Р°РїСѓСЃРє Ollama
+//  Автозапуск Ollama
 // ============================================================
 let ollamaProc = null;
 let ollamaInstallState = {
@@ -409,7 +409,7 @@ function findOllamaExe() {
     if (fs.existsSync(c)) return c;
   }
 
-  // 2) РІ PATH
+  // 2) в PATH
   try {
     const lookup = process.platform === 'win32' ? 'where ollama' : 'command -v ollama';
     const found = execSync(lookup, {
@@ -420,7 +420,7 @@ function findOllamaExe() {
     if (found && fs.existsSync(found)) return found;
   } catch (e) { /* not in PATH */ }
 
-  // 3) С‚РёРїРёС‡РЅС‹Рµ СЂР°СЃРїРѕР»РѕР¶РµРЅРёСЏ РЅР° Windows
+  // 3) типичные расположения на Windows
   const candidates = [
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe'),
     'C:\\Program Files\\Ollama\\ollama.exe',
@@ -542,7 +542,7 @@ function isOllamaResponding() {
 }
 
 async function ensureOllamaRunning() {
-  // РЈР¶Рµ Р·Р°РїСѓС‰РµРЅ?
+  // Уже запущен?
   if (await isOllamaResponding()) return true;
 
   let exe = findOllamaExe();
@@ -567,7 +567,7 @@ async function ensureOllamaRunning() {
     delete ollamaEnv.OLLAMA_LLM_LIBRARY;
   }
 
-  // Р—Р°РїСѓСЃРєР°РµРј ollama serve
+  // Запускаем ollama serve
   try {
     ollamaProc = spawn(exe, ['serve'], {
       windowsHide: true,
@@ -580,7 +580,7 @@ async function ensureOllamaRunning() {
     return false;
   }
 
-  // Р–РґС‘Рј РіРѕС‚РѕРІРЅРѕСЃС‚Рё (РґРѕ ~30 СЃРµРєСѓРЅРґ)
+  // Ждём готовности (до ~30 секунд)
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 500));
     if (await isOllamaResponding()) return true;
@@ -591,7 +591,7 @@ async function ensureOllamaRunning() {
 app.whenReady().then(async () => {
   ensureDataDir();
   createWindow();
-  ensureOllamaRunning();   // С„РѕРЅРѕРІР°СЏ РїРѕРїС‹С‚РєР° Р°РІС‚РѕР·Р°РїСѓСЃРєР° / Р°РІС‚РѕСѓСЃС‚Р°РЅРѕРІРєРё
+  ensureOllamaRunning();   // фоновая попытка автозапуска / автоустановки
 });
 
 app.on('window-all-closed', () => {
@@ -602,7 +602,7 @@ app.on('activate', () => {
 });
 
 // ============================================================
-//  IPC: Р§РђРўР« / Р“Р РЈРџРџР«
+//  IPC: ЧАТЫ / ГРУППЫ
 // ============================================================
 ipcMain.handle('data:get', async () => {
   return loadData();
@@ -614,7 +614,7 @@ ipcMain.handle('data:save', async (_e, data) => {
 });
 
 // ============================================================
-//  IPC: РќРђРЎРўР РћР™РљР
+//  IPC: НАСТРОЙКИ
 // ============================================================
 ipcMain.handle('settings:get', async () => loadSettings());
 ipcMain.handle('settings:save', async (_e, s) => { saveSettings(s); return { ok: true }; });
@@ -662,7 +662,7 @@ ipcMain.handle('ollama:ensure-running', async () => {
   return { ok, running: ok };
 });
 
-// РЎРєР°С‡Р°С‚СЊ РјРѕРґРµР»СЊ СЃ РїСЂРѕРіСЂРµСЃСЃРѕРј
+// Скачать модель с прогрессом
 ipcMain.handle('ollama:pull', async (event, modelName) => {
   try {
     const response = await fetch(`${OLLAMA_HOST}/api/pull`, {
@@ -690,7 +690,7 @@ ipcMain.handle('ollama:pull', async (event, modelName) => {
           const total = json.total || 0;
           const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-          // РЁР»С‘Рј РїСЂРѕРіСЂРµСЃСЃ С‚РѕР»СЊРєРѕ РєРѕРіРґР° РѕРЅ РјРµРЅСЏРµС‚СЃСЏ
+          // Шлём прогресс только когда он меняется
           if (percent !== lastPercent || status.includes('success') || status.includes('verifying')) {
             if (event.sender.isDestroyed && event.sender.isDestroyed()) return { ok: true };
             event.sender.send('pull-progress', {
@@ -711,7 +711,7 @@ ipcMain.handle('ollama:pull', async (event, modelName) => {
   }
 });
 
-// РЈРґР°Р»РёС‚СЊ РјРѕРґРµР»СЊ
+// Удалить модель
 ipcMain.handle('ollama:delete', async (_e, modelName) => {
   try {
     const resp = await fetch(`${OLLAMA_HOST}/api/delete`, {
@@ -766,7 +766,7 @@ ipcMain.handle('flux:generate', async (event, payload = {}) => {
   }
 });
 
-// РџСѓС‚СЊ Рє ollama.exe (РґР»СЏ РїРѕРґСЃРєР°Р·РѕРє РІ UI)
+// Путь к ollama.exe (для подсказок в UI)
 ipcMain.handle('node:install-packages', async (_e, packages, folderName) => {
   try {
     return await installNodePackages(packages, folderName);
@@ -785,7 +785,7 @@ ipcMain.handle('internet:search', async (_e, query) => {
   }
 });
 
-// РћС‚РєСЂС‹С‚СЊ СЃСЃС‹Р»РєСѓ РІРѕ РІРЅРµС€РЅРµРј Р±СЂР°СѓР·РµСЂРµ
+// Открыть ссылку во внешнем браузере
 ipcMain.handle('shell:open', async (_e, url) => {
   shell.openExternal(url);
   return { ok: true };

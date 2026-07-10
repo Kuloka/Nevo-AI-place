@@ -11,7 +11,7 @@
   // ============================================================
   //  STATE
   // ============================================================
-  let data = { groups: [], chats: [] };     // РїРµСЂСЃРёСЃС‚РµРЅС‚РЅС‹Рµ РґР°РЅРЅС‹Рµ
+  let data = { groups: [], chats: [] };     // персистентные данные
   let settings = {
     selectedModel: null,
     thinkLevel: "medium",
@@ -26,15 +26,16 @@
   let currentChatId = null;
   let isGenerating = false;
   let abortController = null;
+  let generationSerial = 0;
+  let activeGenerationId = 0;
 
   let ollamaRunning = false;
-  let availableModels = [];          // СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹Рµ РјРѕРґРµР»Рё [{name,size,details}]
+  let availableModels = [];          // установленные модели [{name,size,details}]
   let pullingModels = {};            // { modelName: percent }
   let fluxStatus = null;
   let pullingFluxModels = {};
   let fluxVariantsExpanded = false;
   let modelsCatalogTab = "text";
-  let ollamaEnsureInFlight = false;
 
   let attachments = [];              // [{kind:'image'|'file', name, dataUrl, base64, text}]
 
@@ -65,6 +66,7 @@
   const appEl = document.querySelector(".app");
   const mainArea = document.querySelector(".main-area");
   const inputEl = $("userInput");
+  const electricBorderCanvas = $("electricBorderCanvas");
   const sendBtn = $("sendBtn");
   const stopBtn = $("stopBtn");
   const chatContainer = $("chatContainer");
@@ -672,7 +674,7 @@
   }
 
   // ============================================================
-  //  РљРђРўРђР›РћР“ РњРћР”Р•Р›Р•Р™
+  //  КАТАЛОГ МОДЕЛЕЙ
   // ============================================================
   const MODEL_CATALOG = [
     { name: "gemma4:12b",        desc: "Google Gemma 4 12B - reasoning, code, vision",                   size: "~8 GB",   category: "Google",   vision: true,  think: true },
@@ -714,6 +716,57 @@
   // ============================================================
   //  PERSISTENCE
   // ============================================================
+  const cp1251ByteByCharacter = (() => {
+    const decoder = new TextDecoder("windows-1251");
+    const map = new Map();
+    for (let byte = 0; byte <= 255; byte += 1) {
+      const character = decoder.decode(Uint8Array.of(byte));
+      if (character !== "\uFFFD") map.set(character, byte);
+    }
+    return map;
+  })();
+
+  function mojibakeScore(text) {
+    const cyrillicLeads = String(text || "").match(/[\u0420\u0421][^\x00-\x7F]/g)?.length || 0;
+    const punctuationLeads = String(text || "").match(/[\u0432\u0412][^\x00-\x7F]/g)?.length || 0;
+    return cyrillicLeads * 2 + punctuationLeads;
+  }
+
+  function decodeCp1251Run(run) {
+    const bytes = [];
+    for (const character of run) {
+      const code = character.codePointAt(0);
+      if (code <= 0x7f) {
+        bytes.push(code);
+        continue;
+      }
+      const byte = cp1251ByteByCharacter.get(character);
+      if (byte === undefined) return null;
+      bytes.push(byte);
+    }
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bytes));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function repairMojibakeText(value) {
+    if (typeof value !== "string" || !value) return value;
+    return value.replace(/[^\x00-\x7F]+/g, run => {
+      let current = run;
+      for (let pass = 0; pass < 4; pass += 1) {
+        const decoded = decodeCp1251Run(current);
+        if (!decoded || decoded === current) break;
+        const scoreImproved = mojibakeScore(decoded) < mojibakeScore(current);
+        const becameShorter = decoded.length < current.length && /[\u0420\u0421\u0432\u0412]/.test(current);
+        if (!scoreImproved && !becameShorter) break;
+        current = decoded;
+      }
+      return current;
+    }).replace(/\uFFFD/g, "");
+  }
+
   async function loadData() {
     if (!window.api) return;
     const d = await window.api.dataGet();
@@ -734,8 +787,9 @@
 
   function migrateBrandNamesInData() {
     let changed = false;
-    const rename = value => String(value || "").replace(/^NebulaProject/i, "NevoProject").replace(/^NevoProject/i, "NevoProject");
-    const looksCorrupted = value => /\u0420\u045c|\u0420\u0455|\u0420\u0406|\u0421\u2039|\u0421\u2021|\u0420\u00b0|\u0421\u201a|\u0420\u00a0|\u0412\u00a0|\u0432\u0402|�/.test(String(value || ""));
+    const rename = value => repairMojibakeText(String(value || ""))
+      .replace(/^NebulaProject/i, "NevoProject")
+      .replace(/^NevoProject/i, "NevoProject");
     data.groups.forEach(group => {
       const nextName = rename(group.name);
       const nextFolderName = rename(group.folderName || group.name);
@@ -749,10 +803,18 @@
       }
     });
     data.chats.forEach(chat => {
-      if (looksCorrupted(chat.title)) {
-        chat.title = "";
+      const repairedTitle = repairMojibakeText(chat.title || "");
+      if (chat.title !== repairedTitle) {
+        chat.title = repairedTitle;
         changed = true;
       }
+      (chat.messages || []).forEach(message => {
+        const repairedContent = repairMojibakeText(message.content || "");
+        if (message.content !== repairedContent) {
+          message.content = repairedContent;
+          changed = true;
+        }
+      });
     });
     if (changed) setTimeout(() => persist(), 0);
   }
@@ -771,7 +833,12 @@
     if (progressCount) progressCount.textContent = `${done}/${total}`;
     if (progressCard) {
       progressCard.classList.toggle("show", total > 0);
-      progressCard.classList.toggle("collapsed", false);
+      progressCard.classList.toggle("collapsed", progressDismissed);
+    }
+    if (progressHideBtn) {
+      setTooltip(progressHideBtn, progressDismissed ? t("showProgress") : t("collapseProgress"));
+      if (progressDismissed) progressHideBtn.dataset.tooltipPlace = "left";
+      else progressHideBtn.removeAttribute("data-tooltip-place");
     }
     if (!progressList) return;
     progressList.innerHTML = "";
@@ -1157,6 +1224,7 @@
     let mouseY = 0.5;
     let targetX = 0.5;
     let targetY = 0.5;
+    let lastFrame = 0;
 
     const resize = () => {
       const rect = threadsBg.getBoundingClientRect();
@@ -1177,6 +1245,15 @@
     };
 
     const draw = time => {
+      if (document.hidden || isGenerating || welcomeEl?.style.display === "none") {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      if (time - lastFrame < 33) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      lastFrame = time;
       const rect = threadsBg.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
@@ -1213,6 +1290,189 @@
     welcomeEl?.addEventListener("mousemove", onMove);
     welcomeEl?.addEventListener("mouseleave", onLeave);
     raf = requestAnimationFrame(draw);
+  }
+
+  function initElectricComposerBorder() {
+    if (!electricBorderCanvas) return;
+    const field = electricBorderCanvas.closest(".composer-field");
+    const ctx = electricBorderCanvas.getContext("2d");
+    if (!field || !ctx) return;
+
+    const color = "#F97316";
+    const speed = 0.4;
+    const chaos = 0.06;
+    const thickness = 2;
+    const borderRadius = 16;
+    const octaves = 10;
+    const lacunarity = 1.6;
+    const gain = 0.7;
+    const amplitude = chaos;
+    const frequency = 10;
+    const baseFlatness = 0;
+    const displacement = 60;
+    const borderOffset = 60;
+    let width = 0;
+    let height = 0;
+    let lastDpr = Math.min(window.devicePixelRatio || 1, 2);
+    let time = 0;
+    let lastFrameTime = 0;
+    let wasActive = false;
+    let clearAfter = 0;
+
+    const updateSize = () => {
+      const rect = field.getBoundingClientRect();
+      width = Math.max(1, rect.width + borderOffset * 2);
+      height = Math.max(1, rect.height + borderOffset * 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      electricBorderCanvas.width = Math.round(width * dpr);
+      electricBorderCanvas.height = Math.round(height * dpr);
+      electricBorderCanvas.style.width = `${width}px`;
+      electricBorderCanvas.style.height = `${height}px`;
+      return { width, height };
+    };
+
+    const random = x => (Math.sin(x * 12.9898) * 43758.5453) % 1;
+    const noise2D = (x, y) => {
+      const i = Math.floor(x);
+      const j = Math.floor(y);
+      const fx = x - i;
+      const fy = y - j;
+      const ux = fx * fx * (3 - 2 * fx);
+      const uy = fy * fy * (3 - 2 * fy);
+      const a = random(i + j * 57);
+      const b = random(i + 1 + j * 57);
+      const c = random(i + (j + 1) * 57);
+      const d = random(i + 1 + (j + 1) * 57);
+      return a * (1 - ux) * (1 - uy) + b * ux * (1 - uy) + c * (1 - ux) * uy + d * ux * uy;
+    };
+    const octavedNoise = (x, octaveCount, noiseLacunarity, noiseGain, baseAmplitude, baseFrequency, currentTime, seed, flatness) => {
+      let y = 0;
+      let octaveAmplitude = baseAmplitude;
+      let octaveFrequency = baseFrequency;
+      for (let index = 0; index < octaveCount; index += 1) {
+        let currentAmplitude = octaveAmplitude;
+        if (index === 0) currentAmplitude *= flatness;
+        y += currentAmplitude * noise2D(octaveFrequency * x + seed * 100, currentTime * octaveFrequency * 0.3);
+        octaveFrequency *= noiseLacunarity;
+        octaveAmplitude *= noiseGain;
+      }
+      return y;
+    };
+    const getCornerPoint = (centerX, centerY, radius, startAngle, arcLength, progress) => {
+      const angle = startAngle + progress * arcLength;
+      return {
+        x: centerX + radius * Math.cos(angle),
+        y: centerY + radius * Math.sin(angle)
+      };
+    };
+    const getRoundedRectPoint = (progress, left, top, rectWidth, rectHeight, radius) => {
+      const straightWidth = rectWidth - 2 * radius;
+      const straightHeight = rectHeight - 2 * radius;
+      const cornerArc = Math.PI * radius / 2;
+      const totalPerimeter = 2 * straightWidth + 2 * straightHeight + 4 * cornerArc;
+      const distance = progress * totalPerimeter;
+      let accumulated = 0;
+
+      if (distance <= accumulated + straightWidth) {
+        const edgeProgress = (distance - accumulated) / straightWidth;
+        return { x: left + radius + edgeProgress * straightWidth, y: top };
+      }
+      accumulated += straightWidth;
+      if (distance <= accumulated + cornerArc) {
+        const edgeProgress = (distance - accumulated) / cornerArc;
+        return getCornerPoint(left + rectWidth - radius, top + radius, radius, -Math.PI / 2, Math.PI / 2, edgeProgress);
+      }
+      accumulated += cornerArc;
+      if (distance <= accumulated + straightHeight) {
+        const edgeProgress = (distance - accumulated) / straightHeight;
+        return { x: left + rectWidth, y: top + radius + edgeProgress * straightHeight };
+      }
+      accumulated += straightHeight;
+      if (distance <= accumulated + cornerArc) {
+        const edgeProgress = (distance - accumulated) / cornerArc;
+        return getCornerPoint(left + rectWidth - radius, top + rectHeight - radius, radius, 0, Math.PI / 2, edgeProgress);
+      }
+      accumulated += cornerArc;
+      if (distance <= accumulated + straightWidth) {
+        const edgeProgress = (distance - accumulated) / straightWidth;
+        return { x: left + rectWidth - radius - edgeProgress * straightWidth, y: top + rectHeight };
+      }
+      accumulated += straightWidth;
+      if (distance <= accumulated + cornerArc) {
+        const edgeProgress = (distance - accumulated) / cornerArc;
+        return getCornerPoint(left + radius, top + rectHeight - radius, radius, Math.PI / 2, Math.PI / 2, edgeProgress);
+      }
+      accumulated += cornerArc;
+      if (distance <= accumulated + straightHeight) {
+        const edgeProgress = (distance - accumulated) / straightHeight;
+        return { x: left, y: top + rectHeight - radius - edgeProgress * straightHeight };
+      }
+      accumulated += straightHeight;
+      const edgeProgress = (distance - accumulated) / cornerArc;
+      return getCornerPoint(left + radius, top + radius, radius, Math.PI, Math.PI / 2, edgeProgress);
+    };
+
+    const drawElectricBorder = currentTime => {
+      const active = document.body.classList.contains("is-generating") && !document.hidden;
+      if (!active) {
+        if (wasActive) {
+          wasActive = false;
+          clearAfter = currentTime + 240;
+        }
+        if (clearAfter && currentTime >= clearAfter) {
+          ctx.clearRect(0, 0, electricBorderCanvas.width, electricBorderCanvas.height);
+          clearAfter = 0;
+        }
+        lastFrameTime = currentTime;
+        requestAnimationFrame(drawElectricBorder);
+        return;
+      }
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      if (dpr !== lastDpr) {
+        lastDpr = dpr;
+        updateSize();
+      }
+      const deltaTime = (currentTime - lastFrameTime) / 1000;
+      time += deltaTime * speed;
+      lastFrameTime = currentTime;
+      clearAfter = 0;
+      wasActive = true;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, electricBorderCanvas.width, electricBorderCanvas.height);
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = thickness;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      const left = borderOffset;
+      const top = borderOffset;
+      const borderWidth = width - 2 * borderOffset;
+      const borderHeight = height - 2 * borderOffset;
+      const radius = Math.min(borderRadius, Math.min(borderWidth, borderHeight) / 2);
+      const approximatePerimeter = 2 * (borderWidth + borderHeight) + 2 * Math.PI * radius;
+      const sampleCount = Math.max(1, Math.floor(approximatePerimeter / 2));
+
+      ctx.beginPath();
+      for (let index = 0; index <= sampleCount; index += 1) {
+        const progress = index / sampleCount;
+        const point = getRoundedRectPoint(progress, left, top, borderWidth, borderHeight, radius);
+        const xNoise = octavedNoise(progress * 8, octaves, lacunarity, gain, amplitude, frequency, time, 0, baseFlatness);
+        const yNoise = octavedNoise(progress * 8, octaves, lacunarity, gain, amplitude, frequency, time, 1, baseFlatness);
+        const x = point.x + xNoise * displacement;
+        const y = point.y + yNoise * displacement;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      requestAnimationFrame(drawElectricBorder);
+    };
+
+    updateSize();
+    new ResizeObserver(updateSize).observe(field);
+    requestAnimationFrame(drawElectricBorder);
   }
 
   async function syncProjectFolders() {
@@ -1262,16 +1522,9 @@
       if (res.installing) {
         welcomeHint.textContent = settings.appLanguage === "ru" ? "Ollama \u0443\u0441\u0442\u0430\u043d\u0430\u0432\u043b\u0438\u0432\u0430\u0435\u0442\u0441\u044f. Nevo \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442 \u0435\u0451 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438." : "Ollama is being installed. Nevo will start it automatically.";
       } else if (!res.installed) {
-        welcomeHint.textContent = settings.appLanguage === "ru" ? "Ollama \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430. Nevo \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0435\u0442 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0438 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0435\u0451." : "Ollama was not found. Nevo will try to install and start it.";
+        welcomeHint.textContent = settings.appLanguage === "ru" ? "Ollama \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430. \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438 \u0438 \u0437\u0430\u043f\u0443\u0441\u0442\u0438 Ollama, \u0437\u0430\u0442\u0435\u043c \u043d\u0430\u0436\u043c\u0438 \u043d\u0430 \u0438\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440." : "Ollama was not found. Install and start Ollama, then click the status indicator.";
       } else {
-        welcomeHint.textContent = settings.appLanguage === "ru" ? "Ollama \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438." : "Ollama is starting automatically.";
-      }
-      if (!ollamaEnsureInFlight && window.api && window.api.ollamaEnsure) {
-        ollamaEnsureInFlight = true;
-        statusDot.className = "status-dot loading";
-        window.api.ollamaEnsure()
-          .then(() => setTimeout(checkOllama, 500))
-          .finally(() => { ollamaEnsureInFlight = false; });
+        welcomeHint.textContent = settings.appLanguage === "ru" ? "Ollama \u043d\u0435 \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u0430. \u041d\u0430\u0436\u043c\u0438 \u043d\u0430 \u0438\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440, \u0447\u0442\u043e\u0431\u044b \u043e\u0442\u043a\u0440\u044b\u0442\u044c Ollama." : "Ollama is not running. Click the status indicator to open it.";
       }
     }
     renderModelDropdown();
@@ -1362,7 +1615,7 @@
       });
     });
 
-    // РєРЅРѕРїРєР° "РµС‰С‘ РјРѕРґРµР»Рё" в†’ РјРѕРґР°Р»РєР°
+    // кнопка "ещё модели" → модалка
     const moreRow = document.createElement("div");
     moreRow.className = "model-download-row";
     moreRow.innerHTML = `<span>${escapeHtml(t("needMoreModels"))}</span>`;
@@ -1463,7 +1716,7 @@
     it.textContent = thinkTexts[it.dataset.think] || it.textContent;
   });
 
-  // Р·Р°РєСЂС‹С‚РёРµ РґСЂРѕРїРґР°СѓРЅРѕРІ РїРѕ РєР»РёРєСѓ РІРЅРµ
+  // закрытие дропдаунов по клику вне
   document.addEventListener("click", () => {
     modelDropdown.classList.remove("show");
     thinkDropdown.classList.remove("show");
@@ -1477,7 +1730,7 @@
   sidebarScroll?.addEventListener("scroll", updateSidebarMiniScroll, { passive: true });
 
   // ============================================================
-  //  STATUS PILL вЂ” Р·Р°РїСѓСЃРє Ollama
+  //  STATUS PILL — запуск Ollama
   // ============================================================
   $("statusPill").addEventListener("click", async () => {
     statusDot.className = "status-dot loading";
@@ -1677,7 +1930,68 @@
     if (logo) {
       logo.innerHTML = `<img class="thinking-favicon" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=64" alt="">`;
     }
-    if (label) label.textContent = `Exploring ${cleanDomain}`;
+    if (label) {
+      label.textContent = `Exploring ${cleanDomain}`;
+      animateBlurText(label);
+    }
+  }
+
+  function cleanActivityText(text) {
+    return String(text || "")
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/^[-*#\s"']+|["']+$/g, "")
+      .split(/\r?\n/)
+      .find(line => line.trim())
+      ?.trim()
+      .slice(0, 150) || "";
+  }
+
+  async function generateThinkingActivity(query, useInternet, model) {
+    if (!thinkingEl || !model || !ollamaRunning) return;
+    const language = settings.appLanguage === "ru" ? "Russian" : "English";
+    const task = useInternet
+      ? "You are about to search several websites and then answer."
+      : "You are about to reason about the request and then answer.";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch("http://127.0.0.1:11434/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          stream: false,
+          think: false,
+          messages: [
+            {
+              role: "system",
+              content: `Write one natural, concise status sentence in ${language}. Describe only what you are going to do next. Do not answer the user's question, do not use quotes, lists, or a fixed greeting. Keep it under 18 words.`
+            },
+            { role: "user", content: `${task}\nUser request: ${String(query || "").slice(0, 500)}` }
+          ],
+          options: {
+            num_ctx: 1024,
+            num_predict: 32,
+            num_thread: Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 8) / 2))),
+            temperature: 0.75
+          }
+        })
+      });
+      if (!response.ok || !thinkingEl) return;
+      const payload = await response.json();
+      const activity = cleanActivityText(payload?.message?.content);
+      const label = thinkingEl?.querySelector(".thinking-label");
+      if (activity && label) {
+        label.textContent = activity;
+        animateBlurText(label);
+        await new Promise(resolve => setTimeout(resolve, 700));
+      }
+    } catch (err) {
+      // The normal thinking state remains visible if this optional status call fails.
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   function restoreThinkingDefault(mode = "answer") {
@@ -1693,7 +2007,11 @@
         <img class="thinking-logo-line" src="resources/nevo-logo.png" alt="">
       `;
     }
-    if (label) label.textContent = text;
+    if (label) {
+      label.textContent = settings.appLanguage === "ru"
+        ? (mode === "image" ? "\u0421\u043e\u0437\u0434\u0430\u044e \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435" : "\u0414\u0443\u043c\u0430\u044e")
+        : text;
+    }
   }
 
   function shouldUseInternet(text) {
@@ -1734,16 +2052,21 @@
   async function collectInternetContext(query) {
     if (!window.api?.internetSearch || !shouldUseInternetSmart(query)) return "";
     setNeuralProgressStep(0);
-    setThinkingExploring("duckduckgo.com");
-    const result = await window.api.internetSearch(query);
+    const removeProgressListener = window.api.onInternetSearchProgress?.(progress => {
+      if (progress?.domain) setThinkingExploring(progress.domain);
+    });
+    let result;
+    try {
+      result = await window.api.internetSearch(query);
+    } finally {
+      removeProgressListener?.();
+    }
     if (!result?.ok || !Array.isArray(result.results) || result.results.length === 0) return "";
-    result.results.slice(0, 3).forEach(item => {
-      if (item.domain) setThinkingExploring(item.domain);
-    });
     const lines = result.results.slice(0, 5).map((item, index) => {
-      return `${index + 1}. ${item.title}\nURL: ${item.url}\nSource: ${item.domain || "web"}\nSnippet: ${item.snippet || ""}`;
+      const pageText = item.content ? `\nPage content:\n${item.content}` : "";
+      return `${index + 1}. ${item.title}\nURL: ${item.url}\nSource: ${item.domain || "web"}\nSnippet: ${item.snippet || ""}${pageText}`;
     });
-    return `Web search results for "${result.query || query}":\n${lines.join("\n\n")}`;
+    return `Web sources read for "${result.query || query}":\n${lines.join("\n\n")}`;
   }
 
   function closeApproval(value) {
@@ -2107,7 +2430,7 @@
     });
   }
 
-  // drag&drop С„Р°Р№Р»РѕРІ РІ composer
+  // drag&drop файлов в composer
   const composerInner = $("composerInner");
   let dragCounter = 0;
   composerInner.addEventListener("dragenter", e => {
@@ -2141,12 +2464,12 @@
             .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   function renderMarkdown(text) {
-    // РЈР±РёСЂР°РµРј <think>...</think> Р±Р»РѕРєРё РёР· РІРёРґРёРјРѕРіРѕ РІС‹РІРѕРґР°
+    // Убираем <think>...</think> блоки из видимого вывода
     let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
     cleaned = cleaned.replace(/<think>/gi, "").replace(/<\/think>/gi, "");
     let html = escapeHtml(cleaned);
 
-    // Р‘Р»РѕС‡РЅС‹Рµ СЌР»РµРјРµРЅС‚С‹ РѕР±СЂР°Р±Р°С‚С‹РІР°РµРј РїРѕСЃС‚СЂРѕС‡РЅРѕ
+    // Блочные элементы обрабатываем построчно
     const lines = html.split("\n");
     const out = [];
     let inUl = false, inOl = false, inCode = false, codeLang = "", codeBuf = [];
@@ -2159,7 +2482,7 @@
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // РєРѕРґ-Р±Р»РѕРє
+      // код-блок
       const fence = line.match(/^```(\w*)\s*$/);
       if (fence) {
         if (!inCode) { inCode = true; codeLang = fence[1]; codeBuf = []; }
@@ -2168,21 +2491,21 @@
       }
       if (inCode) { codeBuf.push(line); continue; }
 
-      // Р·Р°РіРѕР»РѕРІРєРё
+      // заголовки
       let m;
       if ((m = line.match(/^### (.+)$/))) { closeLists(); out.push(`<h3>${inline(m[1])}</h3>`); continue; }
       if ((m = line.match(/^## (.+)$/)))  { closeLists(); out.push(`<h2>${inline(m[1])}</h2>`); continue; }
       if ((m = line.match(/^# (.+)$/)))   { closeLists(); out.push(`<h1>${inline(m[1])}</h1>`); continue; }
       if ((m = line.match(/^&gt; (.+)$/))) { closeLists(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); continue; }
 
-      // РЅРµРЅСѓРјРµСЂРѕРІР°РЅРЅС‹Р№ СЃРїРёСЃРѕРє
+      // ненумерованный список
       if ((m = line.match(/^[\-\*] (.+)$/))) {
         if (inOl) { out.push("</ol>"); inOl = false; }
         if (!inUl) { out.push("<ul>"); inUl = true; }
         out.push(`<li>${inline(m[1])}</li>`);
         continue;
       }
-      // РЅСѓРјРµСЂРѕРІР°РЅРЅС‹Р№ СЃРїРёСЃРѕРє
+      // нумерованный список
       if ((m = line.match(/^\d+\. (.+)$/))) {
         if (inUl) { out.push("</ul>"); inUl = false; }
         if (!inOl) { out.push("<ol>"); inOl = true; }
@@ -2191,25 +2514,25 @@
       }
 
       closeLists();
-      // РїСѓСЃС‚Р°СЏ СЃС‚СЂРѕРєР° в†’ СЂР°Р·РґРµР»РёС‚РµР»СЊ Р°Р±Р·Р°С†Р°
+      // пустая строка → разделитель абзаца
       if (line.trim() === "") out.push("");
       else out.push(inline(line));
     }
     if (inCode) out.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
     closeLists();
 
-    // РЎРѕР±РёСЂР°РµРј РІ Р°Р±Р·Р°С†С‹
+    // Собираем в абзацы
     let body = out.join("\n");
     body = body.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>");
-    // СѓРґР°Р»СЏРµРј <br> РІРѕРєСЂСѓРі Р±Р»РѕС‡РЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ (РµСЃР»Рё Р±Р»РѕРє СЃС‚РѕРёС‚ РѕС‚РґРµР»СЊРЅРѕ РІ Р°Р±Р·Р°С†Рµ)
+    // удаляем <br> вокруг блочных элементов (если блок стоит отдельно в абзаце)
     body = body.replace(/<br>(<(?:ul|ol|pre|h1|h2|h3|blockquote|table))/g, "$1");
     body = body.replace(/(<\/(?:ul|ol|pre|h1|h2|h3|blockquote|table)>)<br>/g, "$1");
-    // СѓРґР°Р»СЏРµРј РїСѓСЃС‚С‹Рµ <p></p>
+    // удаляем пустые <p></p>
     body = body.replace(/<p>\s*<\/p>/g, "");
     return `<p>${body}</p>`;
   }
 
-  // РёРЅР»Р°Р№РЅ-С„РѕСЂРјР°С‚РёСЂРѕРІР°РЅРёРµ: code, bold, italic
+  // инлайн-форматирование: code, bold, italic
   function inline(s) {
     return s
       .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -2264,6 +2587,7 @@
     while (walker.nextNode()) textNodes.push(walker.currentNode);
 
     let index = 0;
+    const maxAnimatedWords = root.closest(".thinking-message") ? 24 : 80;
     textNodes.forEach(node => {
       const frag = document.createDocumentFragment();
       const parts = node.nodeValue.split(/(\s+)/);
@@ -2273,10 +2597,16 @@
           frag.appendChild(document.createTextNode(part));
           return;
         }
+        if (index >= maxAnimatedWords) {
+          frag.appendChild(document.createTextNode(part));
+          index += 1;
+          return;
+        }
         const span = document.createElement("span");
         span.className = "blur-text-word";
         span.style.animationDelay = `${Math.min(index * 55, 1200)}ms`;
         span.textContent = part;
+        span.addEventListener("animationend", () => span.classList.add("blur-text-done"), { once: true });
         frag.appendChild(span);
         index += 1;
       });
@@ -2322,7 +2652,7 @@
       body.appendChild(activityWrap);
     }
 
-    // РІР»РѕР¶РµРЅРёСЏ (РєР°СЂС‚РёРЅРєРё/С„Р°Р№Р»С‹ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ)
+    // вложения (картинки/файлы пользователя)
     if (role === "user" && msg.images && msg.images.length) {
       const att = document.createElement("div");
       att.className = "message-attachments";
@@ -2336,7 +2666,7 @@
       body.appendChild(att);
     }
 
-    // СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹Рµ Р°СЃСЃРёСЃС‚РµРЅС‚РѕРј РёР·РѕР±СЂР°Р¶РµРЅРёСЏ (Р»РѕРєР°Р»СЊРЅС‹Р№ canvas-РіРµРЅРµСЂР°С‚РѕСЂ)
+    // сгенерированные ассистентом изображения (локальный canvas-генератор)
     if (role === "assistant" && msg.images && msg.images.length) {
       const att = document.createElement("div");
       att.className = "message-attachments";
@@ -2397,7 +2727,7 @@
   }
 
   // ============================================================
-  //  SYSTEM PROMPT (РѕР±С‰РёР№ Р°СЃСЃРёСЃС‚РµРЅС‚, РЅРµ С‚РѕР»СЊРєРѕ РєРѕРґ)
+  //  SYSTEM PROMPT (общий ассистент, не только код)
   // ============================================================
   function buildSystemPrompt() {
     const base = `\u0422\u044b ? Nevo, \u0434\u0440\u0443\u0436\u0435\u043b\u044e\u0431\u043d\u044b\u0439 \u0438 \u043f\u043e\u043b\u0435\u0437\u043d\u044b\u0439 AI-\u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043d\u0442. \u0422\u044b \u043f\u043e\u043c\u043e\u0433\u0430\u0435\u0448\u044c \u043b\u044e\u0434\u044f\u043c \u0441 \u0440\u0430\u0437\u043d\u044b\u043c\u0438 \u0437\u0430\u0434\u0430\u0447\u0430\u043c\u0438: \u043e\u0442\u0432\u0435\u0442\u0430\u043c\u0438 \u043d\u0430 \u0432\u043e\u043f\u0440\u043e\u0441\u044b, \u043e\u0431\u044a\u044f\u0441\u043d\u0435\u043d\u0438\u044f\u043c\u0438, \u043f\u0438\u0441\u044c\u043c\u043e\u043c, \u043f\u0435\u0440\u0435\u0432\u043e\u0434\u0430\u043c\u0438, \u0438\u0434\u0435\u044f\u043c\u0438, \u043d\u0430\u0443\u043a\u043e\u0439, \u0443\u0447\u0451\u0431\u043e\u0439, \u0431\u044b\u0442\u043e\u0432\u044b\u043c\u0438 \u0434\u0435\u043b\u0430\u043c\u0438 \u0438 \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u043c. \u041d\u0435 \u0441\u0447\u0438\u0442\u0430\u0439, \u0447\u0442\u043e \u043b\u044e\u0431\u0430\u044f \u043f\u0440\u043e\u0441\u044c\u0431\u0430 \u00ab\u0441\u043e\u0437\u0434\u0430\u0439\u00bb \u043e\u0437\u043d\u0430\u0447\u0430\u0435\u0442 \u043a\u043e\u0434. \u041f\u0438\u0448\u0438 \u043a\u043e\u0434 \u0442\u043e\u043b\u044c\u043a\u043e \u0435\u0441\u043b\u0438 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u044f\u0432\u043d\u043e \u043f\u0440\u043e\u0441\u0438\u0442 \u043a\u043e\u0434, \u0441\u0430\u0439\u0442, \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441, \u0438\u0433\u0440\u0443 \u0438\u043b\u0438 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435. \u041e\u0442\u0432\u0435\u0447\u0430\u0439 \u0435\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u043e \u0438 \u043f\u043e\u043d\u044f\u0442\u043d\u043e. \u0412\u0441\u0435\u0433\u0434\u0430 \u043e\u0442\u0432\u0435\u0447\u0430\u0439 \u043d\u0430 \u044f\u0437\u044b\u043a\u0435 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f.`;
@@ -2449,12 +2779,17 @@
   // ============================================================
   function ollamaOptionsForThink() {
     const level = settings.thinkLevel;
-    const opts = { num_ctx: 32768 };
-    if (level === "none") opts.num_predict = 800;
-    else if (level === "low") opts.num_predict = 1200;
-    else if (level === "medium") opts.num_predict = 2500;
-    else if (level === "high") opts.num_predict = 5000;
-    else if (level === "max") opts.num_predict = 10000;
+    const availableThreads = navigator.hardwareConcurrency || 8;
+    const opts = {
+      num_ctx: 8192,
+      num_thread: Math.max(2, Math.min(6, Math.floor(availableThreads / 2))),
+      num_batch: 256
+    };
+    if (level === "none") opts.num_predict = 600;
+    else if (level === "low") opts.num_predict = 900;
+    else if (level === "medium") opts.num_predict = 1000;
+    else if (level === "high") opts.num_predict = 1800;
+    else if (level === "max") opts.num_predict = 3000;
     return opts;
   }
 
@@ -2502,7 +2837,7 @@
     return text.slice(0, 2).toUpperCase();
   }
 
-  async function generateResponse(userText, userImages) {
+  async function generateResponse(userText, userImages, generationId) {
     let requestModel = settings.selectedModel;
     if (userImages && userImages.length) {
       requestModel = pickVisionModelName();
@@ -2513,33 +2848,45 @@
         addThinkingLine(`Using vision model: ${requestModel}`);
       }
     }
-    if (!ollamaRunning) return "Ollama РЅРµ Р·Р°РїСѓС‰РµРЅ. Nevo Р·Р°РїСѓСЃРєР°РµС‚ РµРіРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё, РїРѕРґРѕР¶РґРёС‚Рµ РЅРµСЃРєРѕР»СЊРєРѕ СЃРµРєСѓРЅРґ.";
-    if (!requestModel) return "РњРѕРґРµР»СЊ РЅРµ РІС‹Р±СЂР°РЅР°. РќР°Р¶РјРёС‚Рµ РєРЅРѕРїРєСѓ РјРѕРґРµР»Рё РІРЅРёР·Сѓ, С‡С‚РѕР±С‹ РІС‹Р±СЂР°С‚СЊ.";
+    if (!ollamaRunning) {
+      return settings.appLanguage === "ru"
+        ? "Ollama не запущена. Запусти Ollama и нажми на индикатор статуса в Nevo."
+        : "Ollama is not running. Start Ollama and click the status indicator in Nevo.";
+    }
+    if (!requestModel || !availableModels.some(model => model.name === requestModel)) {
+      return settings.appLanguage === "ru"
+        ? "Нет установленной модели. Открой каталог моделей, скачай модель и выбери её."
+        : "No model is installed. Open the model catalog, download a model, and select it.";
+    }
 
-    // РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ Рѕ vision
+    // предупреждение о vision
     if (userImages && userImages.length && !modelSupportsVision(settings.selectedModel)) {
-      // РІСЃС‘ СЂР°РІРЅРѕ РїСЂРѕР±СѓРµРј вЂ” РЅРµРєРѕС‚РѕСЂС‹Рµ РјРѕРґРµР»Рё РїСЂРѕСЃС‚Рѕ РїСЂРѕРёРіРЅРѕСЂРёСЂСѓСЋС‚
+      // всё равно пробуем — некоторые модели просто проигнорируют
     }
 
     const chat = getCurrentChat();
     const history = chat ? chat.messages.slice(0, -1) : [];
 
-    // РёСЃС‚РѕСЂРёСЏ Р±РµР· РІР»РѕР¶РµРЅРёР№-РєР°СЂС‚РёРЅРѕРє РґР»СЏ context window
+    // история без вложений-картинок для context window
     const contextMsgs = history.slice(-12).map(m => ({
       role: m.role,
       content: m.content
     }));
 
-    // С‚РµРєСѓС‰РµРµ СЃРѕРѕР±С‰РµРЅРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (СЃ РєР°СЂС‚РёРЅРєР°РјРё Рё С‚РµРєСЃС‚РѕРј С„Р°Р№Р»РѕРІ)
+    // текущее сообщение пользователя (с картинками и текстом файлов)
     let currentUserContent = userText || "";
     if (userImages && userImages.length === 0) {
-      // РЅРёС‡РµРіРѕ
+      // ничего
     }
     const fileTexts = attachments.filter(a => a.kind === "file");
     if (fileTexts.length) {
       currentUserContent += "\n\n" + fileTexts.map(f => `File "${f.name}":\n\`\`\`\n${f.text.slice(0, 12000)}\n\`\`\``).join("\n\n");
     }
-    const internetContext = await collectInternetContext(userText || currentUserContent);
+    const useInternet = shouldUseInternetSmart(userText || currentUserContent);
+    await generateThinkingActivity(userText || currentUserContent, useInternet, requestModel);
+    if (generationId !== activeGenerationId) return "_STOPPED_";
+    const internetContext = useInternet ? await collectInternetContext(userText || currentUserContent) : "";
+    if (generationId !== activeGenerationId) return "_STOPPED_";
     if (internetContext) {
       currentUserContent += `\n\nUse this internet context when relevant. Cite source domains or URLs in the answer.\n${internetContext}`;
     }
@@ -2556,7 +2903,7 @@
       stream: true,
       options: ollamaOptionsForThink()
     };
-    // think-РїР°СЂР°РјРµС‚СЂ РґР»СЏ РјРѕРґРµР»РµР№, РєРѕС‚РѕСЂС‹Рµ РµРіРѕ РїРѕРґРґРµСЂР¶РёРІР°СЋС‚
+    // think-параметр для моделей, которые его поддерживают
     if (modelSupportsThink(requestModel)) {
       reqBody.think = settings.thinkLevel !== "none";
     }
@@ -2622,10 +2969,10 @@
         addProgressItem("Finished answer");
       }
       finishNeuralProgress();
-      return fullText || "(РїСѓСЃС‚РѕР№ РѕС‚РІРµС‚)";
+      return fullText || "(пустой ответ)";
     } catch (err) {
       if (err.name === "AbortError") return "_STOPPED_";
-      return `РћС€РёР±РєР°: ${err.message}`;
+      return `Ошибка: ${err.message}`;
     } finally {
       abortController = null;
     }
@@ -2739,7 +3086,7 @@
     return wantsGeneration && (imageWords.some(w => lower.includes(w)) || objectWords.some(w => lower.includes(w)));
   }
 
-  // Р”РµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅС‹Р№ РіРµРЅРµСЂР°С‚РѕСЂ РїСЃРµРІРґРѕСЃР»СѓС‡Р°Р№РЅС‹С… С‡РёСЃРµР» РёР· СЃС‚СЂРѕРєРё (seed).
+  // Детерминированный генератор псевдослучайных чисел из строки (seed).
   function seedFromString(str) {
     let h = 1779033703 ^ str.length;
     for (let i = 0; i < str.length; i++) {
@@ -2754,23 +3101,23 @@
     };
   }
 
-  // РР·РІР»РµС‡РµРЅРёРµ РїР°Р»РёС‚СЂС‹ Рё С…Р°СЂР°РєС‚РµСЂР° СЃС†РµРЅС‹ РёР· С‚РµРєСЃС‚Р° Р·Р°РїСЂРѕСЃР°.
+  // Извлечение палитры и характера сцены из текста запроса.
   function paletteFromPrompt(text) {
     const lower = String(text || "").toLowerCase();
     const colorMap = {
-      "РєСЂР°СЃРЅС‹Р№": [220, 60, 50], "red": [220, 60, 50], "Р°Р»С‹Р№": [200, 30, 40],
-      "РѕСЂР°РЅР¶РµРІ": [255, 130, 30], "orange": [255, 130, 30],
-      "Р¶С‘Р»С‚": [245, 200, 40], "yellow": [245, 200, 40], "Р¶РµР»С‚": [245, 200, 40],
-      "Р·РµР»С‘РЅ": [60, 180, 90], "green": [60, 180, 90], "Р·РµР»РµРЅ": [60, 180, 90],
-      "РіРѕР»СѓР±": [80, 190, 230], "cyan": [80, 190, 230], "Р±РёСЂСЋР·": [40, 200, 190],
-      "СЃРёРЅ": [50, 110, 230], "blue": [50, 110, 230],
-      "С„РёРѕР»РµС‚": [150, 80, 220], "purple": [150, 80, 220], "violet": [150, 80, 220], "Р»РёР»РѕРІ": [170, 100, 210],
-      "СЂРѕР·РѕРІ": [240, 120, 170], "pink": [240, 120, 170],
-      "Р±РёСЂСЋР·РѕРІ": [40, 200, 190], "teal": [40, 200, 190],
-      "Р±РµР»": [240, 240, 245], "white": [240, 240, 245],
-      "С‡С‘СЂРЅ": [25, 25, 30], "black": [25, 25, 30], "С‡РµСЂРЅ": [25, 25, 30],
-      "РєРѕСЂРёС‡РЅРµРІ": [140, 90, 50], "brown": [140, 90, 50],
-      "Р·РѕР»РѕС‚": [230, 190, 80], "gold": [230, 190, 80],
+      "красный": [220, 60, 50], "red": [220, 60, 50], "алый": [200, 30, 40],
+      "оранжев": [255, 130, 30], "orange": [255, 130, 30],
+      "жёлт": [245, 200, 40], "yellow": [245, 200, 40], "желт": [245, 200, 40],
+      "зелён": [60, 180, 90], "green": [60, 180, 90], "зелен": [60, 180, 90],
+      "голуб": [80, 190, 230], "cyan": [80, 190, 230], "бирюз": [40, 200, 190],
+      "син": [50, 110, 230], "blue": [50, 110, 230],
+      "фиолет": [150, 80, 220], "purple": [150, 80, 220], "violet": [150, 80, 220], "лилов": [170, 100, 210],
+      "розов": [240, 120, 170], "pink": [240, 120, 170],
+      "бирюзов": [40, 200, 190], "teal": [40, 200, 190],
+      "бел": [240, 240, 245], "white": [240, 240, 245],
+      "чёрн": [25, 25, 30], "black": [25, 25, 30], "черн": [25, 25, 30],
+      "коричнев": [140, 90, 50], "brown": [140, 90, 50],
+      "золот": [230, 190, 80], "gold": [230, 190, 80],
     };
     const found = [];
     for (const key in colorMap) {
@@ -2786,16 +3133,16 @@
       cosmic: [[80, 40, 140], [200, 80, 180], [40, 80, 200], [20, 20, 60]],
     };
     let pick;
-    if (lower.includes("Р·Р°РєР°С‚") || lower.includes("sunset") || lower.includes("РІРµС‡РµСЂ")) pick = palettes.sunset;
-    else if (lower.includes("РјРѕСЂРµ") || lower.includes("РѕРєРµР°РЅ") || lower.includes("ocean") || lower.includes("РІРѕРґР°")) pick = palettes.ocean;
-    else if (lower.includes("РєРѕСЃРјРѕСЃ") || lower.includes("Р·РІРµР·Рґ") || lower.includes("space") || lower.includes("galaxy")) pick = palettes.cosmic;
-    else if (lower.includes("Р»РµСЃ") || lower.includes("forest") || lower.includes("РїСЂРёСЂРѕРґ") || lower.includes("nature")) pick = palettes.nature;
-    else if (lower.includes("РЅРѕС‡СЊ") || lower.includes("night") || lower.includes("С‡С‘СЂРЅ") || lower.includes("dark")) pick = palettes.mono;
+    if (lower.includes("закат") || lower.includes("sunset") || lower.includes("вечер")) pick = palettes.sunset;
+    else if (lower.includes("море") || lower.includes("океан") || lower.includes("ocean") || lower.includes("вода")) pick = palettes.ocean;
+    else if (lower.includes("космос") || lower.includes("звезд") || lower.includes("space") || lower.includes("galaxy")) pick = palettes.cosmic;
+    else if (lower.includes("лес") || lower.includes("forest") || lower.includes("природ") || lower.includes("nature")) pick = palettes.nature;
+    else if (lower.includes("ночь") || lower.includes("night") || lower.includes("чёрн") || lower.includes("dark")) pick = palettes.mono;
     else pick = palettes.warm;
     return found.length >= 2 ? found.slice(0, 4) : pick;
   }
 
-  // РџСЂРѕС†РµРґСѓСЂРЅР°СЏ РіРµРЅРµСЂР°С†РёСЏ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ РЅР° canvas. Р’РѕР·РІСЂР°С‰Р°РµС‚ dataURL (PNG).
+  // Процедурная генерация изображения на canvas. Возвращает dataURL (PNG).
   function generateImageFromPrompt(prompt) {
     const size = 512;
     const canvas = document.createElement("canvas");
@@ -2805,7 +3152,7 @@
     const rnd = seedFromString(prompt || "art");
     const palette = paletteFromPrompt(prompt);
 
-    // Р¤РѕРЅ: РґРёР°РіРѕРЅР°Р»СЊРЅС‹Р№ РјРЅРѕРіРѕС†РІРµС‚РЅС‹Р№ РіСЂР°РґРёРµРЅС‚.
+    // Фон: диагональный многоцветный градиент.
     const grad = ctx.createLinearGradient(0, 0, size, size);
     palette.forEach((c, i) => {
       grad.addColorStop(i / Math.max(1, palette.length - 1), `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
@@ -2813,7 +3160,7 @@
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
-    // РњСЏРіРєРёРµ СЃРІРµС‚РѕРІС‹Рµ РїСЏС‚РЅР° (СЂР°РґРёР°Р»СЊРЅС‹Рµ РіСЂР°РґРёРµРЅС‚С‹) РґР»СЏ РіР»СѓР±РёРЅС‹.
+    // Мягкие световые пятна (радиальные градиенты) для глубины.
     for (let i = 0; i < 4; i++) {
       const c = palette[Math.floor(rnd() * palette.length)];
       const x = rnd() * size;
@@ -2981,8 +3328,8 @@
       ctx.fillStyle = "#3f5f90"; ctx.beginPath(); ctx.roundRect(160, 344, 200, 92, 28); ctx.fill();
     }
 
-    // Р“РµРѕРјРµС‚СЂРёС‡РµСЃРєРёРµ С„РѕСЂРјС‹, РµСЃР»Рё Р·Р°РїСЂРѕСЃ РїСЂРѕ Р°Р±СЃС‚СЂР°РєС†РёСЋ/РіРµРѕРјРµС‚СЂРёСЋ/Р»РѕРіРѕС‚РёРї.
-    if (!subject && (lower.includes("РіРµРѕРјРµС‚СЂ") || lower.includes("abstract") || lower.includes("Р»РѕРіРѕС‚РёРї") || lower.includes("logo") || lower.includes("РїР°С‚С‚РµСЂРЅ"))) {
+    // Геометрические формы, если запрос про абстракцию/геометрию/логотип.
+    if (!subject && (lower.includes("геометр") || lower.includes("abstract") || lower.includes("логотип") || lower.includes("logo") || lower.includes("паттерн"))) {
       const shapes = 10 + Math.floor(rnd() * 14);
       for (let i = 0; i < shapes; i++) {
         const c = palette[Math.floor(rnd() * palette.length)];
@@ -3009,8 +3356,8 @@
       }
     }
 
-    // Р—РІС‘Р·РґС‹/С‚РѕС‡РєРё РґР»СЏ РєРѕСЃРјРёС‡РµСЃРєРёС…/РЅРѕС‡РЅС‹С… СЃС†РµРЅ.
-    if (lower.includes("РєРѕСЃРјРѕСЃ") || lower.includes("Р·РІРµР·Рґ") || lower.includes("space") || lower.includes("star") || lower.includes("РЅРѕС‡СЊ") || lower.includes("night")) {
+    // Звёзды/точки для космических/ночных сцен.
+    if (lower.includes("космос") || lower.includes("звезд") || lower.includes("space") || lower.includes("star") || lower.includes("ночь") || lower.includes("night")) {
       const stars = 120 + Math.floor(rnd() * 180);
       ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
       for (let i = 0; i < stars; i++) {
@@ -3023,8 +3370,8 @@
       }
     }
 
-    // Р’РѕР»РЅС‹/Р»РёРЅРёРё РґР»СЏ РїРµР№Р·Р°Р¶РµР№ Рё РІРѕРґС‹.
-    if (lower.includes("РјРѕСЂРµ") || lower.includes("РѕРєРµР°РЅ") || lower.includes("ocean") || lower.includes("РІРѕР»РЅР°") || lower.includes("water") || lower.includes("РїРµР№Р·Р°Р¶") || lower.includes("landscape")) {
+    // Волны/линии для пейзажей и воды.
+    if (lower.includes("море") || lower.includes("океан") || lower.includes("ocean") || lower.includes("волна") || lower.includes("water") || lower.includes("пейзаж") || lower.includes("landscape")) {
       for (let i = 0; i < 6; i++) {
         const c = palette[Math.floor(rnd() * palette.length)];
         ctx.strokeStyle = `rgba(${c[0]}, ${c[1]}, ${c[2]}, 0.5)`;
@@ -3039,8 +3386,8 @@
       }
     }
 
-    // РЎРёР»СѓСЌС‚ РєСЂСѓРіР° (СЃРѕР»РЅС†Рµ/Р»СѓРЅР°) РґР»СЏ Р·Р°РєР°С‚РѕРІ/РЅРѕС‡Рё.
-    if (lower.includes("Р·Р°РєР°С‚") || lower.includes("sunset") || lower.includes("СЃРѕР»РЅС†") || lower.includes("sun") || lower.includes("Р»СѓРЅР°") || lower.includes("moon") || lower.includes("РЅРѕС‡СЊ") || lower.includes("night")) {
+    // Силуэт круга (солнце/луна) для закатов/ночи.
+    if (lower.includes("закат") || lower.includes("sunset") || lower.includes("солнц") || lower.includes("sun") || lower.includes("луна") || lower.includes("moon") || lower.includes("ночь") || lower.includes("night")) {
       const c = palette[0];
       ctx.fillStyle = `rgba(${Math.min(255, c[0] + 40)}, ${Math.min(255, c[1] + 40)}, ${Math.min(255, c[2] + 40)}, 0.9)`;
       ctx.beginPath();
@@ -3048,7 +3395,7 @@
       ctx.fill();
     }
 
-    // Р›С‘РіРєР°СЏ Р·РµСЂРЅРёСЃС‚РѕСЃС‚СЊ РґР»СЏ С‚РµРєСЃС‚СѓСЂС‹.
+    // Лёгкая зернистость для текстуры.
     const img = ctx.getImageData(0, 0, size, size);
     const data = img.data;
     const noisePower = subject ? 5 : 18;
@@ -3218,8 +3565,8 @@
   }
 
   async function renderImageGenerationPlaceholder(prompt) {
-    // РљР°СЂС‚РѕС‡РєР°-Р·Р°РіСЂСѓР·РєР° СЃ РїСѓР»СЊСЃРёСЂСѓСЋС‰РёРјРё С‚РѕС‡РєР°РјРё.
-    // Р”Р°С‘Рј Р°РЅРёРјР°С†РёРё В«РїСЂРѕРёРіСЂР°С‚СЊСЃСЏВ» 1.8СЃ РїРµСЂРµРґ РїРѕРєР°Р·РѕРј СЂРµР·СѓР»СЊС‚Р°С‚Р°.
+    // Карточка-загрузка с пульсирующими точками.
+    // Даём анимации «проиграться» 1.8с перед показом результата.
     if (!fluxStatus) await refreshFluxStatus();
     const variant = getFluxVariant(selectedFluxVariantId());
     if (!variant?.installed) {
@@ -3234,7 +3581,7 @@
         : "Local Flux could not create the image.");
     }
     return dataUrl;
-    // Р”РѕР±Р°РІР»СЏРµРј СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРµ РёР·РѕР±СЂР°Р¶РµРЅРёРµ РІ С‚РµР»Рѕ СЃРѕРѕР±С‰РµРЅРёСЏ.
+    // Добавляем сгенерированное изображение в тело сообщения.
   }
 
   function positionAnchoredSheet(el) {
@@ -3354,6 +3701,8 @@
     if (!wantsImageGeneration) {
       text = await collectBuildDetails(text);
     }
+    const generationId = ++generationSerial;
+    activeGenerationId = generationId;
     resetProgress();
     if (!currentChatId) createNewChat();
     activeCodeActivityEl = null;
@@ -3412,6 +3761,7 @@
           imageError = formatFluxGenerationError(err);
         }
       }
+      if (generationId !== activeGenerationId) return;
       removeThinkingMessage();
       finishNeuralProgress();
       chat.messages.push(imageDataUrl
@@ -3444,7 +3794,8 @@
     updateHomeMode();
     showThinkingMessage("answer", text, shouldUseInternetSmart(text));
 
-    const reply = await generateResponse(text, imgs);
+    const reply = await generateResponse(text, imgs, generationId);
+    if (generationId !== activeGenerationId) return;
 
     removeThinkingMessage();
     isGenerating = false;
@@ -3466,7 +3817,20 @@
     persist();
   }
 
-  stopBtn.addEventListener("click", () => { if (abortController) abortController.abort(); });
+  stopBtn.addEventListener("click", () => {
+    activeGenerationId = ++generationSerial;
+    if (abortController) abortController.abort();
+    isGenerating = false;
+    updateHomeMode();
+    removeThinkingMessage();
+    agentProgress = [];
+    renderProgress();
+    stopBtn.style.display = "none";
+    sendBtn.style.display = "flex";
+    updateSendBtn();
+    renderSidebar();
+    persist();
+  });
 
   // input
   function autoResize() {
@@ -3529,11 +3893,11 @@
     persist();
   }
 
-  // --- РјРѕРґР°Р»РєР° РіСЂСѓРїРїС‹ ---
+  // --- модалка группы ---
   let editingGroupId = null;
   function openGroupModal(editId = null) {
     editingGroupId = editId;
-    $("groupModalTitle").textContent = editId ? "РџРµСЂРµРёРјРµРЅРѕРІР°С‚СЊ РїР°РїРєСѓ" : "РќРѕРІР°СЏ РїР°РїРєР°";
+    $("groupModalTitle").textContent = editId ? "Переименовать папку" : "Новая папка";
     $("groupInput").value = editId ? (data.groups.find(g => g.id === editId) || {}).name || "" : "";
     $("groupModal").classList.add("show");
     setTimeout(() => $("groupInput").focus(), 50);
@@ -3601,11 +3965,11 @@
   function renderSidebar() {
     chatHistoryList.innerHTML = "";
 
-    // С‡Р°С‚С‹ Р±РµР· РіСЂСѓРїРїС‹
+    // чаты без группы
     const ungrouped = data.chats.filter(c => !c.groupId);
     ungrouped.forEach(c => chatHistoryList.appendChild(buildChatItem(c)));
 
-    // РіСЂСѓРїРїС‹
+    // группы
     data.groups.forEach(g => {
       const groupChats = data.chats.filter(c => c.groupId === g.id);
       const wrap = document.createElement("div");
@@ -3668,7 +4032,7 @@
     title.textContent = c.title || t("newChat");
     item.appendChild(title);
 
-    // РјРµРЅСЋ "РїРµСЂРµРјРµСЃС‚РёС‚СЊ"
+    // меню "переместить"
     const moveBtn = document.createElement("button");
     moveBtn.className = "history-item-del";
     moveBtn.dataset.tooltipPlace = "left";
@@ -3696,7 +4060,7 @@
   }
 
   function showMoveMenu(chatId, anchor) {
-    // РїСЂРѕСЃС‚РѕР№ prompt-СЃРїРёСЃРѕРє РіСЂСѓРїРї
+    // простой prompt-список групп
     const options = [t("movePromptNone"), ...data.groups.map(g => g.name)];
     const choice = prompt(t("movePromptTitle") + "\n" + options.map((o, i) => `${i}: ${o}`).join("\n"), "0");
     if (choice === null) return;
@@ -3710,7 +4074,7 @@
     currentChatId = id;
     const c = getCurrentChat();
     if (c && c.model && c.model !== settings.selectedModel) {
-      // РїРѕРґРіСЂСѓР¶Р°РµРј РјРѕРґРµР»СЊ С‡Р°С‚Р°
+      // подгружаем модель чата
       settings.selectedModel = c.model;
       modelLabel.textContent = c.model;
     }
@@ -3719,7 +4083,7 @@
     inputEl.focus();
   }
 
-  // drop С‡Р°С‚Р° РЅР° РіСЂСѓРїРїСѓ
+  // drop чата на группу
   chatHistoryList.addEventListener("dragover", e => e.preventDefault());
   chatHistoryList.addEventListener("drop", e => {
     e.preventDefault();
@@ -4088,7 +4452,7 @@
     renderModelsCatalog(filter);
   }
 
-  // РїСЂРѕРіСЂРµСЃСЃ СЃРєР°С‡РёРІР°РЅРёСЏ
+  // прогресс скачивания
   async function downloadFluxVariant(variantId, filter) {
     if (!window.api?.downloadFluxModel) return;
     pullingFluxModels[variantId] = 0;
@@ -4168,13 +4532,14 @@
     renderProgress();
     if (settings.selectedModel) modelLabel.textContent = settings.selectedModel;
     initThreadsBackground();
+    initElectricComposerBorder();
     typeWelcomeTitle();
     renderSidebar();
     renderMessages();
     updateSendBtn();
     await refreshFluxStatus();
     await checkOllama();
-    // РїРѕРІС‚РѕСЂРЅР°СЏ РїСЂРѕРІРµСЂРєР° СЃС‚Р°С‚СѓСЃР° Ollama РєР°Р¶РґС‹Рµ 15СЃ
+    // повторная проверка статуса Ollama каждые 15с
     setInterval(checkOllama, 15000);
     inputEl.focus();
   }

@@ -21,7 +21,12 @@ if not exist "node_modules" (
     echo.
 )
 
-echo   [*] Starting Nevo...
-echo   [*] Projects folder: %USERPROFILE%\NevoProject
-echo.
-call npx electron .
+if not exist "%~dp0node_modules\electron\dist\electron.exe" (
+    echo   [!] Electron is not installed correctly.
+    echo   Run install.cmd first.
+    pause
+    exit /b 1
+)
+
+wscript.exe //B "%~dp0start.vbs"
+exit /b 0
