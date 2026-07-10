@@ -1454,6 +1454,13 @@ body.theme-light .image-gen-dots span {
   overflow: visible;
   box-shadow: none;
 }
+.thinking-node-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 0 5px rgba(255, 106, 26, 0.3));
+}
 .composer-field-content {
   display: flex;
   align-items: center;
@@ -1524,10 +1531,88 @@ body.is-generating .composer-field {
   background: linear-gradient(-30deg, var(--electric-light-color), transparent, var(--electric-border-color));
 }
 body.is-generating .eb-canvas-container,
-body.is-generating .eb-layers {
+body.is-generating .eb-layers,
+body.has-composer-sheet .eb-canvas-container,
+body.has-composer-sheet .eb-layers {
   opacity: 1;
   visibility: visible;
   transition-delay: 0s;
+}
+
+.response-node-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin-top: 14px;
+  object-fit: contain;
+  user-select: none;
+}
+.response-node-live {
+  width: 52px;
+  height: 52px;
+  margin-top: 10px;
+  filter: drop-shadow(0 0 8px rgba(255, 106, 26, 0.22));
+}
+.streaming-response {
+  animation: none;
+}
+
+/* Clarification and approval are one electric composer surface. */
+.composer-field {
+  display: flex;
+  flex-direction: column;
+}
+.composer-field > #approvalModal,
+.composer-field > .setup-sheet {
+  position: relative;
+  inset: auto;
+  order: -1;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: auto;
+  z-index: 1;
+}
+.composer-field > #approvalModal.show,
+.composer-field > .setup-sheet.show {
+  display: block;
+}
+.composer-field > #approvalModal .approval-card,
+.composer-field > .setup-sheet .setup-card {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-light);
+  border-radius: 15px 15px 0 0;
+  background: var(--bg-input);
+  box-shadow: none;
+  animation: composerSheetIn 0.2s cubic-bezier(.2,.8,.2,1);
+  box-sizing: border-box;
+}
+.composer-field > #approvalModal .modal-header,
+.composer-field > #approvalModal .modal-body,
+.composer-field > .setup-sheet .setup-card {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.composer-field > .setup-sheet .setup-card {
+  padding-top: 16px;
+  padding-bottom: 18px;
+  pointer-events: auto;
+}
+.has-composer-sheet .composer-field-content {
+  border-radius: 0 0 15px 15px;
+}
+.approval-text,
+.setup-title,
+.setup-question {
+  text-align: left;
+}
+@keyframes composerSheetIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .composer-attach {

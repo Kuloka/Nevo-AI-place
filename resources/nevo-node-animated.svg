@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <style>
+    @keyframes o1{50%{transform:translate(4px,-5px)}}@keyframes o2{50%{transform:translate(6px,3px)}}@keyframes o3{50%{transform:translate(3px,6px)}}@keyframes o4{50%{transform:translate(-4px,5px)}}@keyframes o5{50%{transform:translate(-6px,-3px)}}@keyframes o6{50%{transform:translate(-3px,-6px)}}
+    @keyframes breathe{50%{opacity:.75}}@keyframes pulse{50%{r:10;opacity:1}}
+    .n{transform-box:fill-box;transform-origin:center;animation:3.2s ease-in-out infinite}.a{animation-name:o1}.b{animation-name:o2;animation-duration:3.6s}.c{animation-name:o3;animation-duration:3s}.d{animation-name:o4;animation-duration:3.8s}.e{animation-name:o5;animation-duration:3.3s}.f{animation-name:o6;animation-duration:3.5s}.links{animation:breathe 2.4s ease-in-out infinite}.core{animation:pulse 1.6s ease-in-out infinite}
+  </style>
+  <g class="links" stroke="#FF6A1A" stroke-width="2" opacity=".25"><path d="M80 80 80 30M80 80 130 55M80 80 130 105M80 80 80 130M80 80 30 105M80 80 30 55M80 30 130 55 130 105 80 130 30 105 30 55Z"/></g>
+  <circle class="core" cx="80" cy="80" r="6" fill="#FFB27A" opacity=".7"/>
+  <circle class="n a" cx="80" cy="30" r="11" fill="#FF6A1A"/><circle class="n b" cx="130" cy="55" r="9" fill="#FF7E33"/><circle class="n c" cx="130" cy="105" r="11" fill="#FF6A1A"/><circle class="n d" cx="80" cy="130" r="9" fill="#FF7E33"/><circle class="n e" cx="30" cy="105" r="11" fill="#FF6A1A"/><circle class="n f" cx="30" cy="55" r="9" fill="#FF7E33"/>
+</svg>

@@ -55,6 +55,8 @@
   let panelFileTabsState = [];
   let activePanelFileKey = null;
   let typingTimer = null;
+  let streamingMessageEl = null;
+  let streamingRenderTimer = null;
 
   // ============================================================
   //  DOM
@@ -115,6 +117,18 @@
   const setupSheet = $("setupSheet");
   const setupQuestion = $("setupQuestion");
   const setupOptions = $("setupOptions");
+
+  const composerField = document.querySelector(".composer-field");
+  const composerFieldContent = composerField?.querySelector(".composer-field-content");
+  if (composerField && composerFieldContent) {
+    composerField.insertBefore(approvalModal, composerFieldContent);
+    composerField.insertBefore(setupSheet, composerFieldContent);
+  }
+
+  function syncComposerSheetState() {
+    const expanded = approvalModal?.classList.contains("show") || setupSheet?.classList.contains("show");
+    document.body.classList.toggle("has-composer-sheet", Boolean(expanded));
+  }
 
   const modelBtn = $("modelBtn");
   const modelLabel = $("modelLabel");
@@ -1413,7 +1427,7 @@
     };
 
     const drawElectricBorder = currentTime => {
-      const active = document.body.classList.contains("is-generating") && !document.hidden;
+      const active = (document.body.classList.contains("is-generating") || document.body.classList.contains("has-composer-sheet")) && !document.hidden;
       if (!active) {
         if (wasActive) {
           wasActive = false;
@@ -1895,8 +1909,7 @@
       <div class="message-body">
         <div class="thinking-inline">
           <span class="thinking-logo" aria-hidden="true">
-            <img class="thinking-logo-ghost" src="resources/nevo-logo.png" alt="">
-            <img class="thinking-logo-line" src="resources/nevo-logo.png" alt="">
+            <img class="thinking-node-icon" src="resources/nevo-node-animated.svg" alt="">
           </span>
           <span class="thinking-main">
             <span class="thinking-label">${escapeHtml(waitingText)}</span>
@@ -2003,8 +2016,7 @@
       : (mode === "image" ? "Creating image" : "Thinking");
     if (logo) {
       logo.innerHTML = `
-        <img class="thinking-logo-ghost" src="resources/nevo-logo.png" alt="">
-        <img class="thinking-logo-line" src="resources/nevo-logo.png" alt="">
+        <img class="thinking-node-icon" src="resources/nevo-node-animated.svg" alt="">
       `;
     }
     if (label) {
@@ -2071,6 +2083,7 @@
 
   function closeApproval(value) {
     approvalModal?.classList.remove("show");
+    syncComposerSheetState();
     if (pendingApprovalResolve) {
       const resolve = pendingApprovalResolve;
       pendingApprovalResolve = null;
@@ -2081,8 +2094,8 @@
   function requestChangeApproval(filePath, summary) {
     if (!approvalModal || !approvalText) return Promise.resolve("accept");
     approvalText.textContent = summary || `${t("approvalDefault")} ${filePath || ""}`.trim();
-    positionAnchoredSheet(approvalModal);
     approvalModal.classList.add("show");
+    syncComposerSheetState();
     return new Promise(resolve => {
       pendingApprovalResolve = resolve;
     });
@@ -2635,6 +2648,14 @@
       delete msg.animateOnRender;
     }
     body.appendChild(textEl);
+    if (role === "assistant" && visibleAssistantText.trim()) {
+      const signature = document.createElement("img");
+      signature.className = "response-node-icon response-node-static";
+      signature.src = "resources/nevo-node-static.svg";
+      signature.alt = "";
+      signature.setAttribute("aria-hidden", "true");
+      body.appendChild(signature);
+    }
     if (role === "assistant" && msg.codeActivity) {
       const activityWrap = document.createElement("div");
       activityWrap.className = "code-activity-wrap";
@@ -2929,6 +2950,19 @@
       let fullText = "";
       let firstToken = true;
 
+      const renderStreamingMessage = () => {
+        streamingRenderTimer = null;
+        if (!streamingMessageEl) {
+          streamingMessageEl = document.createElement("div");
+          streamingMessageEl.className = "message assistant streaming-response";
+          streamingMessageEl.innerHTML = `<div class="message-body"><div class="message-text"></div><img class="response-node-icon response-node-live" src="resources/nevo-node-animated.svg" alt="" aria-hidden="true"></div>`;
+          messagesEl.appendChild(streamingMessageEl);
+        }
+        const textNode = streamingMessageEl.querySelector(".message-text");
+        if (textNode) textNode.innerHTML = renderMarkdown(fullText);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -2942,16 +2976,20 @@
               if (firstToken) {
                 firstToken = false;
                 setNeuralProgressStep(1);
-                restoreThinkingDefault("answer");
+                removeThinkingMessage();
               }
               fullText += content;
-              chatContainer.scrollTop = chatContainer.scrollHeight;
+              if (!streamingRenderTimer) streamingRenderTimer = setTimeout(renderStreamingMessage, 80);
             }
           } catch { /* partial */ }
         }
       }
 
       const finalActivity = getLatestCodeActivity(fullText);
+      clearTimeout(streamingRenderTimer);
+      streamingRenderTimer = null;
+      streamingMessageEl?.remove();
+      streamingMessageEl = null;
       if (finalActivity) {
         lastCodeActivity = Object.assign({}, finalActivity, { state: "edited" });
       }
@@ -2974,6 +3012,10 @@
       if (err.name === "AbortError") return "_STOPPED_";
       return `Ошибка: ${err.message}`;
     } finally {
+      clearTimeout(streamingRenderTimer);
+      streamingRenderTimer = null;
+      streamingMessageEl?.remove();
+      streamingMessageEl = null;
       abortController = null;
     }
   }
@@ -3604,6 +3646,7 @@
     setupOptions.innerHTML = "";
     setupSheet.classList.add("show");
     setupSheet.setAttribute("aria-hidden", "false");
+    syncComposerSheetState();
 
     return new Promise(resolve => {
       options.forEach(option => {
@@ -3631,6 +3674,7 @@
               if (!value) return;
               setupSheet.classList.remove("show");
               setupSheet.setAttribute("aria-hidden", "true");
+              syncComposerSheetState();
               resolve(value);
             };
             submit.addEventListener("click", finish);
@@ -3646,6 +3690,7 @@
           }
           setupSheet.classList.remove("show");
           setupSheet.setAttribute("aria-hidden", "true");
+          syncComposerSheetState();
           resolve(option.value);
         });
         setupOptions.appendChild(btn);
