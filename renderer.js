@@ -1909,7 +1909,7 @@
       <div class="message-body">
         <div class="thinking-inline">
           <span class="thinking-logo" aria-hidden="true">
-            <img class="thinking-node-icon" src="resources/nevo-node-animated.svg" alt="">
+            <img class="thinking-node-icon" src="resources/nevo-logo.png" alt="">
           </span>
           <span class="thinking-main">
             <span class="thinking-label">${escapeHtml(waitingText)}</span>
@@ -2016,7 +2016,7 @@
       : (mode === "image" ? "Creating image" : "Thinking");
     if (logo) {
       logo.innerHTML = `
-        <img class="thinking-node-icon" src="resources/nevo-node-animated.svg" alt="">
+        <img class="thinking-node-icon" src="resources/nevo-logo.png" alt="">
       `;
     }
     if (label) {
@@ -2721,7 +2721,7 @@
       if (visibleAssistantText.trim()) {
         const signature = document.createElement("img");
         signature.className = "response-node-icon response-node-static";
-        signature.src = "resources/nevo-node-static.svg";
+        signature.src = "resources/nevo-logo.png";
         signature.alt = "";
         signature.setAttribute("aria-hidden", "true");
         body.appendChild(signature);
@@ -2955,7 +2955,7 @@
         if (!streamingMessageEl) {
           streamingMessageEl = document.createElement("div");
           streamingMessageEl.className = "message assistant streaming-response";
-          streamingMessageEl.innerHTML = `<div class="message-body"><div class="message-text"></div><img class="response-node-icon response-node-live" src="resources/nevo-node-animated.svg" alt="" aria-hidden="true"></div>`;
+          streamingMessageEl.innerHTML = `<div class="message-body"><div class="message-text"></div><img class="response-node-icon response-node-live" src="resources/nevo-logo.png" alt="" aria-hidden="true"></div>`;
           messagesEl.appendChild(streamingMessageEl);
         }
         const textNode = streamingMessageEl.querySelector(".message-text");
