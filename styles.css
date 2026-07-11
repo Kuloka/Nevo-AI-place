@@ -1540,26 +1540,6 @@ body.has-composer-sheet .eb-layers {
   transition-delay: 0s;
 }
 
-.response-node-icon {
-  display: block;
-  width: 48px;
-  height: 48px;
-  margin-top: 14px;
-  object-fit: contain;
-  user-select: none;
-  background: transparent;
-  border-radius: 0;
-}
-.response-node-live {
-  width: 52px;
-  height: 52px;
-  margin-top: 10px;
-  filter: drop-shadow(0 0 8px rgba(255, 106, 26, 0.22));
-}
-.streaming-response {
-  animation: none;
-}
-
 /* Clarification and approval are one electric composer surface. */
 .composer-field {
   display: flex;

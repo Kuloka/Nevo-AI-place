@@ -55,8 +55,6 @@
   let panelFileTabsState = [];
   let activePanelFileKey = null;
   let typingTimer = null;
-  let streamingMessageEl = null;
-  let streamingRenderTimer = null;
 
   // ============================================================
   //  DOM
@@ -2944,19 +2942,6 @@
       let fullText = "";
       let firstToken = true;
 
-      const renderStreamingMessage = () => {
-        streamingRenderTimer = null;
-        if (!streamingMessageEl) {
-          streamingMessageEl = document.createElement("div");
-          streamingMessageEl.className = "message assistant streaming-response";
-          streamingMessageEl.innerHTML = `<div class="message-body"><div class="message-text"></div><img class="response-node-icon response-node-live" src="resources/nevo-logo.png" alt="" aria-hidden="true"></div>`;
-          messagesEl.appendChild(streamingMessageEl);
-        }
-        const textNode = streamingMessageEl.querySelector(".message-text");
-        if (textNode) textNode.innerHTML = renderMarkdown(fullText);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-      };
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -2970,20 +2955,15 @@
               if (firstToken) {
                 firstToken = false;
                 setNeuralProgressStep(1);
-                removeThinkingMessage();
+                restoreThinkingDefault("answer");
               }
               fullText += content;
-              if (!streamingRenderTimer) streamingRenderTimer = setTimeout(renderStreamingMessage, 80);
             }
           } catch { /* partial */ }
         }
       }
 
       const finalActivity = getLatestCodeActivity(fullText);
-      clearTimeout(streamingRenderTimer);
-      streamingRenderTimer = null;
-      streamingMessageEl?.remove();
-      streamingMessageEl = null;
       if (finalActivity) {
         lastCodeActivity = Object.assign({}, finalActivity, { state: "edited" });
       }
@@ -3006,10 +2986,6 @@
       if (err.name === "AbortError") return "_STOPPED_";
       return `Ошибка: ${err.message}`;
     } finally {
-      clearTimeout(streamingRenderTimer);
-      streamingRenderTimer = null;
-      streamingMessageEl?.remove();
-      streamingMessageEl = null;
       abortController = null;
     }
   }
