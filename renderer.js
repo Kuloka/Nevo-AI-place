@@ -1909,7 +1909,8 @@
       <div class="message-body">
         <div class="thinking-inline">
           <span class="thinking-logo" aria-hidden="true">
-            <img class="thinking-node-icon" src="resources/nevo-logo.png" alt="">
+            <img class="thinking-logo-ghost" src="resources/nevo-logo.png" alt="">
+            <img class="thinking-logo-line" src="resources/nevo-logo.png" alt="">
           </span>
           <span class="thinking-main">
             <span class="thinking-label">${escapeHtml(waitingText)}</span>
@@ -2016,7 +2017,8 @@
       : (mode === "image" ? "Creating image" : "Thinking");
     if (logo) {
       logo.innerHTML = `
-        <img class="thinking-node-icon" src="resources/nevo-logo.png" alt="">
+        <img class="thinking-logo-ghost" src="resources/nevo-logo.png" alt="">
+        <img class="thinking-logo-line" src="resources/nevo-logo.png" alt="">
       `;
     }
     if (label) {
