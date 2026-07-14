@@ -38,7 +38,13 @@ contextBridge.exposeInMainWorld('api', {
 
   // Внешние ссылки
   openExternal:   (url)           => ipcRenderer.invoke('shell:open', url),
-  internetSearch: (query)         => ipcRenderer.invoke('internet:search', query),
+  internetSearch: (query, preferredDomains) => ipcRenderer.invoke('internet:search', query, preferredDomains),
+  generateOnlineImage: (prompt)   => ipcRenderer.invoke('image:generate-online', prompt),
+  onInternetSearchProgress: (cb)  => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('internet-search-progress', handler);
+    return () => ipcRenderer.removeListener('internet-search-progress', handler);
+  },
   openProjectsFolder: ()          => ipcRenderer.invoke('projects:open-folder'),
   getProjectsRoot: ()             => ipcRenderer.invoke('projects:get-root'),
   terminalRun: (command)          => ipcRenderer.invoke('terminal:run', command),

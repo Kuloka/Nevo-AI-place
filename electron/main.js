@@ -122,7 +122,7 @@ function domainFromUrl(url) {
   }
 }
 
-async function internetSearch(query) {
+async function internetSearch(query, preferredDomains = [], onProgress = null) {
   const q = String(query || '').trim().slice(0, 300);
   if (!q) return { ok: false, error: 'Empty search query.' };
 
@@ -145,6 +145,17 @@ async function internetSearch(query) {
     const domain = domainFromUrl(resultUrl);
     if (title && resultUrl) results.push({ title, url: resultUrl, domain, snippet });
   }
+  const preferred = Array.isArray(preferredDomains)
+    ? preferredDomains.map(domain => String(domain || "").toLowerCase()).filter(Boolean)
+    : [];
+  if (preferred.length) {
+    results.sort((a, b) => {
+      const aRank = preferred.indexOf(String(a.domain || "").toLowerCase());
+      const bRank = preferred.indexOf(String(b.domain || "").toLowerCase());
+      return (aRank === -1 ? Number.MAX_SAFE_INTEGER : aRank) - (bRank === -1 ? Number.MAX_SAFE_INTEGER : bRank);
+    });
+  }
+  for (const result of results) onProgress?.({ domain: result.domain, url: result.url });
   return { ok: true, query: q, results };
 }
 
@@ -777,9 +788,29 @@ ipcMain.handle('node:install-packages', async (_e, packages, folderName) => {
 
 ipcMain.handle('ollama:path', async () => findOllamaExe());
 
-ipcMain.handle('internet:search', async (_e, query) => {
+ipcMain.handle('internet:search', async (event, query, preferredDomains) => {
   try {
-    return await internetSearch(query);
+    return await internetSearch(query, preferredDomains, progress => {
+      event.sender.send('internet-search-progress', progress);
+    });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('image:generate-online', async (_event, prompt) => {
+  try {
+    const text = String(prompt || '').trim().slice(0, 1200);
+    if (!text) return { ok: false, error: 'Empty image prompt.' };
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(text)}?width=768&height=768&nologo=true`;
+    const response = await fetch(url, { headers: { 'User-Agent': 'Nevo/1.1.6' } });
+    if (!response.ok) return { ok: false, error: `Image service HTTP ${response.status}` };
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length) return { ok: false, error: 'Image service returned an empty file.' };
+    ensureDataDir();
+    const output = path.join(FLUX_OUTPUT_DIR, `sana-${Date.now()}.jpg`);
+    fs.writeFileSync(output, bytes);
+    return { ok: true, path: output };
   } catch (err) {
     return { ok: false, error: err.message };
   }

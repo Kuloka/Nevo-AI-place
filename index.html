@@ -215,14 +215,6 @@
             </div>
             </div>
           </div>
-          <svg class="composer-moving-border" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
-            <rect class="composer-moving-border-glow" x="3" y="3" width="994" height="94" rx="22" ry="22" pathLength="100">
-              <animate attributeName="stroke-dashoffset" values="0;-100" dur="2.4s" repeatCount="indefinite" />
-            </rect>
-            <rect class="composer-moving-border-core" x="3" y="3" width="994" height="94" rx="22" ry="22" pathLength="100">
-              <animate attributeName="stroke-dashoffset" values="0;-100" dur="2.4s" repeatCount="indefinite" />
-            </rect>
-          </svg>
         </div>
 
       </div>
@@ -337,6 +329,11 @@
       <button class="catalog-btn danger approval-action" id="approvalDenyBtn">Denied</button>
     </div>
   </div>
+</div>
+
+<div class="image-lightbox" id="imageLightbox" aria-hidden="true">
+  <button class="image-lightbox-close" id="imageLightboxClose" type="button" aria-label="Close image">&times;</button>
+  <img class="image-lightbox-image" id="imageLightboxImage" alt="Preview">
 </div>
 
 <div class="setup-sheet" id="setupSheet" aria-hidden="true">

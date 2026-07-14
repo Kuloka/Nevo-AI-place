@@ -20,7 +20,8 @@
     theme: "light",
     computeMode: "auto",
     selectedFluxVariant: null,
-    downloadedLanguages: ["en"]
+    downloadedLanguages: ["en"],
+    preferredWebSources: {}
   };
 
   let currentChatId = null;
@@ -44,6 +45,10 @@
   let lastCodeActivity = null;
   let currentCodeProjectFolderName = null;
   let currentThinkingLines = [];
+  let thinkingReasoningText = "";
+  let thinkingRenderFrame = 0;
+  let thinkingHasReasoning = false;
+  let thinkingThoughtDurationMs = 0;
   let agentProgress = [];
   let progressDismissed = false;
   let codingPreviewItems = [];
@@ -73,6 +78,9 @@
   const attachBtn = $("attachBtn");
   const fileInput = $("fileInput");
   const attachmentStrip = $("attachmentStrip");
+  const imageLightbox = $("imageLightbox");
+  const imageLightboxImage = $("imageLightboxImage");
+  const imageLightboxClose = $("imageLightboxClose");
   const statusDot = $("statusDot");
   const welcomeHint = $("welcomeHint");
   const openProjectsBtn = $("openProjectsBtn");
@@ -600,28 +608,24 @@
   const FLUX_UI_TEXT = {
     en: {
       photoGeneration: "Photo generation models",
-      fluxSchnell: "Flux Schnell",
-      fluxAutoSelected: "Matched to your GPU",
-      fluxManualWarning: "VRAM could not be detected. Choose a variant manually.",
-      fluxInsufficient: "Not enough video memory for local image generation.",
-      fluxShowVariants: "Show other variants",
-      fluxHideVariants: "Hide variants",
+      fluxSchnell: "SD Turbo",
+      fluxAutoSelected: "Fast local image generation",
+      fluxManualWarning: "Public model weights download automatically on first use.",
+      fluxInsufficient: "Image generation may be slow on CPU.",
       fluxVramLine: "{vram} GB VRAM -> {variant}",
       fluxUnknownVram: "Unknown VRAM",
-      fluxQualityFp16: "Full quality",
-      fluxQualityFp8: "Minimal quality loss",
-      fluxQualityNf4: "Lower detail, low VRAM",
-      fluxDownloadError: "Could not download Flux model",
-      fluxGenerateLocalFailed: "Local Flux generation failed, using fallback."
+      fluxQualityFp16: "Fast image quality",
+      fluxQualityFp8: "Fast image quality",
+      fluxQualityNf4: "Fast image quality",
+      fluxDownloadError: "Could not prepare SD Turbo",
+      fluxGenerateLocalFailed: "Local SD Turbo generation failed."
     },
     ru: {
       photoGeneration: "\u041c\u043e\u0434\u0435\u043b\u0438 \u0434\u043b\u044f \u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u0438 \u0444\u043e\u0442\u043e",
-      fluxSchnell: "Flux Schnell",
+      fluxSchnell: "SD Turbo",
       fluxAutoSelected: "\u041f\u043e\u0434\u043e\u0431\u0440\u0430\u043d\u043e \u043f\u043e\u0434 \u0432\u0430\u0448\u0443 \u0432\u0438\u0434\u0435\u043e\u043a\u0430\u0440\u0442\u0443",
       fluxManualWarning: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c VRAM. \u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0430\u0440\u0438\u0430\u043d\u0442 \u0432\u0440\u0443\u0447\u043d\u0443\u044e.",
       fluxInsufficient: "\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0432\u0438\u0434\u0435\u043e\u043f\u0430\u043c\u044f\u0442\u0438 \u0434\u043b\u044f \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u0438 \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0439.",
-      fluxShowVariants: "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0434\u0440\u0443\u0433\u0438\u0435 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u044b",
-      fluxHideVariants: "\u0421\u043a\u0440\u044b\u0442\u044c \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u044b",
       fluxVramLine: "{vram} \u0413\u0411 VRAM -> {variant}",
       fluxUnknownVram: "VRAM \u043d\u0435 \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0430",
       fluxQualityFp16: "\u041f\u043e\u043b\u043d\u043e\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e",
@@ -791,6 +795,7 @@
     if (!settings.theme) settings.theme = "light";
     if (!settings.computeMode) settings.computeMode = "auto";
     if (!settings.selectedFluxVariant) settings.selectedFluxVariant = null;
+    if (!settings.preferredWebSources || typeof settings.preferredWebSources !== "object") settings.preferredWebSources = {};
     if (!Array.isArray(settings.downloadedLanguages)) settings.downloadedLanguages = ["en"];
     const allowedLanguages = new Set(APP_LANGUAGES.map(lang => lang.code));
     settings.downloadedLanguages = settings.downloadedLanguages.filter(code => allowedLanguages.has(code));
@@ -1924,6 +1929,10 @@
   function showThinkingMessage(mode = "answer", promptText = "", web = false) {
     removeThinkingMessage();
     currentThinkingLines = [];
+    thinkingReasoningText = "";
+    thinkingHasReasoning = false;
+    thinkingThoughtDurationMs = 0;
+    thinkingStartedAt = Date.now();
     startNeuralProgress(mode, web);
     const waitingText = mode === "image"
       ? (settings.appLanguage === "ru" ? "\u0421\u043e\u0437\u0434\u0430\u044e \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435..." : "Creating image...")
@@ -1937,6 +1946,14 @@
             <span class="thinking-label thinking-shining-text">${escapeHtml(waitingText)}</span>
           </span>
         </div>
+        <div class="thinking-reasoning" role="status" aria-live="polite">
+          <div class="thinking-stage">
+            <span class="thinking-stage-label">Thinking</span>
+            <span class="thinking-stage-time"></span>
+            <span class="thinking-stage-line" aria-hidden="true"></span>
+          </div>
+          <div class="thinking-reasoning-text"></div>
+        </div>
       </div>
     `;
     messagesEl.appendChild(thinkingEl);
@@ -1947,72 +1964,107 @@
     currentThinkingLines.push(line);
   }
 
+  function updateThinkingReasoning(text, reset = false) {
+    if (!thinkingEl || !text) return;
+    if (reset) thinkingReasoningText = "";
+    thinkingReasoningText += String(text);
+    thinkingHasReasoning = true;
+    const label = thinkingEl.querySelector(".thinking-label");
+    if (label) {
+      label.className = "thinking-label thinking-shining-text";
+      label.textContent = "NevoAI is thinking...";
+      label.onclick = null;
+      label.onkeydown = null;
+      label.removeAttribute("role");
+      label.removeAttribute("tabindex");
+    }
+    if (thinkingRenderFrame) return;
+    thinkingRenderFrame = requestAnimationFrame(() => {
+      thinkingRenderFrame = 0;
+      const reasoning = thinkingEl?.querySelector(".thinking-reasoning");
+      const textEl = thinkingEl?.querySelector(".thinking-reasoning-text");
+      if (!reasoning || !textEl) return;
+      reasoning.classList.add("is-visible");
+      textEl.textContent = thinkingReasoningText.trimStart();
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    });
+  }
+
+  function setThinkingSearchingWeb(domain = "") {
+    if (!thinkingEl) return;
+    const label = thinkingEl.querySelector(".thinking-label");
+    if (!label) return;
+    const cleanDomain = String(domain || "").replace(/^www\./, "");
+    const labelText = cleanDomain ? `Searching ${cleanDomain}` : "Searching web";
+    label.className = "thinking-label thinking-searching-web";
+    label.innerHTML = `${cleanDomain ? `<img class="thinking-source-icon" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=32" alt="">` : ""}<span>${escapeHtml(labelText)}</span><span class="thinking-search-dots" aria-hidden="true"><i></i><i></i><i></i></span>`;
+    if (cleanDomain) {
+      label.title = `Prefer ${cleanDomain} for web search`;
+      label.setAttribute("role", "button");
+      label.tabIndex = 0;
+      const prefer = () => rememberPreferredWebSource(cleanDomain);
+      label.onclick = prefer;
+      label.onkeydown = event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          prefer();
+        }
+      };
+    }
+  }
+
+  function formatDuration(milliseconds) {
+    const seconds = Math.max(0, milliseconds || 0) / 1000;
+    return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+  }
+
+  function collapseThinkingToThought() {
+    if (!thinkingEl || !thinkingHasReasoning || thinkingThoughtDurationMs) return;
+    thinkingThoughtDurationMs = Date.now() - thinkingStartedAt;
+    const reasoning = thinkingEl.querySelector(".thinking-reasoning");
+    const label = thinkingEl.querySelector(".thinking-stage-label");
+    const time = thinkingEl.querySelector(".thinking-stage-time");
+    const nevoStatus = thinkingEl.querySelector(".thinking-inline");
+    if (reasoning) reasoning.classList.add("is-collapsed");
+    if (label) label.textContent = "Thought";
+    if (time) time.textContent = formatDuration(thinkingThoughtDurationMs);
+    if (reasoning && nevoStatus) {
+      reasoning.parentElement.insertBefore(nevoStatus, reasoning.nextSibling);
+      nevoStatus.classList.add("thinking-after-thought");
+    }
+  }
+
+  function extractInlineThinking(content, state) {
+    state.buffer += String(content || "");
+    let reasoning = "";
+    while (state.buffer) {
+      if (!state.inside) {
+        const opening = state.buffer.indexOf("<think>");
+        if (opening === -1) {
+          state.buffer = state.buffer.slice(-6);
+          break;
+        }
+        state.buffer = state.buffer.slice(opening + 7);
+        state.inside = true;
+        continue;
+      }
+      const closing = state.buffer.indexOf("</think>");
+      if (closing === -1) {
+        const safeLength = Math.max(0, state.buffer.length - 8);
+        reasoning += state.buffer.slice(0, safeLength);
+        state.buffer = state.buffer.slice(safeLength);
+        break;
+      }
+      reasoning += state.buffer.slice(0, closing);
+      state.buffer = state.buffer.slice(closing + 8);
+      state.inside = false;
+    }
+    return reasoning;
+  }
+
   function setThinkingExploring(domain) {
     if (!thinkingEl || !domain) return;
-    const label = thinkingEl.querySelector(".thinking-label");
-    const cleanDomain = String(domain || "").replace(/^www\./, "");
-    if (label) {
-      label.textContent = `Exploring ${cleanDomain}`;
-      animateBlurText(label);
-    }
-  }
-
-  function cleanActivityText(text) {
-    return String(text || "")
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .replace(/^[-*#\s"']+|["']+$/g, "")
-      .split(/\r?\n/)
-      .find(line => line.trim())
-      ?.trim()
-      .slice(0, 150) || "";
-  }
-
-  async function generateThinkingActivity(query, useInternet, model) {
-    if (!thinkingEl || !model || !ollamaRunning) return;
-    const language = settings.appLanguage === "ru" ? "Russian" : "English";
-    const task = useInternet
-      ? "You are about to search several websites and then answer."
-      : "You are about to reason about the request and then answer.";
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-    try {
-      const response = await fetch("http://127.0.0.1:11434/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model,
-          stream: false,
-          think: false,
-          messages: [
-            {
-              role: "system",
-              content: `Write one natural, concise status sentence in ${language}. Describe only what you are going to do next. Do not answer the user's question, do not use quotes, lists, or a fixed greeting. Keep it under 18 words.`
-            },
-            { role: "user", content: `${task}\nUser request: ${String(query || "").slice(0, 500)}` }
-          ],
-          options: {
-            num_ctx: 1024,
-            num_predict: 32,
-            num_thread: Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 8) / 2))),
-            temperature: 0.75
-          }
-        })
-      });
-      if (!response.ok || !thinkingEl) return;
-      const payload = await response.json();
-      const activity = cleanActivityText(payload?.message?.content);
-      const label = thinkingEl?.querySelector(".thinking-label");
-      if (activity && label) {
-        label.textContent = activity;
-        animateBlurText(label);
-        await new Promise(resolve => setTimeout(resolve, 700));
-      }
-    } catch (err) {
-      // The normal thinking state remains visible if this optional status call fails.
-    } finally {
-      clearTimeout(timeout);
-    }
+    setThinkingSearchingWeb(domain);
   }
 
   function restoreThinkingDefault(mode = "answer") {
@@ -2029,7 +2081,9 @@
       `;
     }
     if (label) {
-      label.textContent = mode === "image" ? "Creating image..." : "NevoAI is thinking...";
+      label.textContent = mode === "image"
+        ? (settings.appLanguage === "ru" ? "\u0421\u043e\u0437\u0434\u0430\u044e \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435..." : "Creating image...")
+        : "NevoAI is thinking...";
     }
   }
 
@@ -2068,15 +2122,53 @@
       || /https?:\/\/|(?:^|\s)[a-z0-9-]+\.[a-z]{2,}(?:\s|\/|$)/i.test(raw);
   }
 
+  function getPreferredWebSources() {
+    const sources = settings.preferredWebSources || {};
+    return Object.entries(sources)
+      .sort(([, a], [, b]) => Number(b || 0) - Number(a || 0))
+      .slice(0, 8)
+      .map(([domain]) => domain);
+  }
+
+  function rememberPreferredWebSource(domain) {
+    const cleanDomain = String(domain || "").toLowerCase().replace(/^www\./, "").trim();
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(cleanDomain)) return;
+    if (!settings.preferredWebSources || typeof settings.preferredWebSources !== "object") {
+      settings.preferredWebSources = {};
+    }
+    settings.preferredWebSources[cleanDomain] = Number(settings.preferredWebSources[cleanDomain] || 0) + 1;
+    persist();
+  }
+
+  function rememberPreferredWebSourcesFromText(text) {
+    const raw = String(text || "").toLowerCase();
+    const domains = new Set((raw.match(/(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+/g) || [])
+      .map(value => value.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*/, "")));
+    const knownSources = {
+      reddit: "reddit.com",
+      youtube: "youtube.com",
+      github: "github.com",
+      wikipedia: "wikipedia.org",
+      wiki: "wikipedia.org",
+      stackoverflow: "stackoverflow.com"
+    };
+    Object.entries(knownSources).forEach(([word, domain]) => {
+      if (raw.includes(word)) domains.add(domain);
+    });
+    domains.forEach(rememberPreferredWebSource);
+  }
+
   async function collectInternetContext(query) {
     if (!window.api?.internetSearch || !shouldUseInternetSmart(query)) return "";
+    setThinkingSearchingWeb();
+    rememberPreferredWebSourcesFromText(query);
     setNeuralProgressStep(0);
     const removeProgressListener = window.api.onInternetSearchProgress?.(progress => {
       if (progress?.domain) setThinkingExploring(progress.domain);
     });
     let result;
     try {
-      result = await window.api.internetSearch(query);
+      result = await window.api.internetSearch(query, getPreferredWebSources());
     } finally {
       removeProgressListener?.();
     }
@@ -2116,6 +2208,9 @@
   function removeThinkingMessage() {
     clearInterval(thinkingTicker);
     thinkingTicker = null;
+    if (thinkingRenderFrame) cancelAnimationFrame(thinkingRenderFrame);
+    thinkingRenderFrame = 0;
+    thinkingReasoningText = "";
     if (thinkingEl) {
       thinkingEl.remove();
       thinkingEl = null;
@@ -2612,7 +2707,7 @@
     while (walker.nextNode()) textNodes.push(walker.currentNode);
 
     let index = 0;
-    const maxAnimatedWords = root.closest(".thinking-message") ? 24 : 80;
+    const maxAnimatedWords = Number.POSITIVE_INFINITY;
     textNodes.forEach(node => {
       const frag = document.createDocumentFragment();
       const parts = node.nodeValue.split(/(\s+)/);
@@ -2629,7 +2724,7 @@
         }
         const span = document.createElement("span");
         span.className = "blur-text-word";
-        span.style.animationDelay = `${Math.min(index * 55, 1200)}ms`;
+        span.style.animationDelay = `${index * 14}ms`;
         span.textContent = part;
         span.addEventListener("animationend", () => span.classList.add("blur-text-done"), { once: true });
         frag.appendChild(span);
@@ -2638,6 +2733,28 @@
       node.parentNode.replaceChild(frag, node);
     });
   }
+
+  function closeImagePreview() {
+    if (!imageLightbox) return;
+    imageLightbox.classList.remove("show");
+    imageLightbox.setAttribute("aria-hidden", "true");
+    if (imageLightboxImage) imageLightboxImage.removeAttribute("src");
+  }
+
+  function openImagePreview(dataUrl) {
+    if (!imageLightbox || !imageLightboxImage || !dataUrl) return;
+    imageLightboxImage.src = dataUrl;
+    imageLightbox.classList.add("show");
+    imageLightbox.setAttribute("aria-hidden", "false");
+  }
+
+  imageLightboxClose?.addEventListener("click", closeImagePreview);
+  imageLightbox?.addEventListener("click", event => {
+    if (event.target === imageLightbox) closeImagePreview();
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && imageLightbox?.classList.contains("show")) closeImagePreview();
+  });
 
   // ============================================================
   //  MESSAGES RENDERING
@@ -2649,6 +2766,21 @@
     if (role === "assistant" && msg.animateOnRender) m.classList.add("blur-message");
     const body = document.createElement("div");
     body.className = "message-body";
+
+    if (role === "assistant" && msg.workMeta) {
+      const workMeta = document.createElement("div");
+      workMeta.className = "assistant-work-meta";
+      const label = document.createElement("span");
+      label.className = "assistant-work-label";
+      label.textContent = "Worked";
+      const line = document.createElement("span");
+      line.className = "assistant-work-line";
+      const time = document.createElement("span");
+      time.className = "assistant-work-time";
+      time.textContent = formatDuration(msg.workMeta.totalDurationMs);
+      workMeta.append(label, time, line);
+      body.appendChild(workMeta);
+    }
 
     const textEl = document.createElement("div");
     textEl.className = "message-text";
@@ -2685,7 +2817,7 @@
         const img = document.createElement("img");
         img.className = "chat-image";
         img.src = dataUrl;
-        img.addEventListener("click", () => window.open(dataUrl));
+        img.addEventListener("click", () => openImagePreview(dataUrl));
         att.appendChild(img);
       });
       body.appendChild(att);
@@ -2699,7 +2831,7 @@
         const img = document.createElement("img");
         img.className = "chat-image";
         img.src = dataUrl;
-        img.addEventListener("click", () => window.open(dataUrl));
+        img.addEventListener("click", () => openImagePreview(dataUrl));
         att.appendChild(img);
       });
       body.appendChild(att);
@@ -2908,7 +3040,6 @@
       currentUserContent += "\n\n" + fileTexts.map(f => `File "${f.name}":\n\`\`\`\n${f.text.slice(0, 12000)}\n\`\`\``).join("\n\n");
     }
     const useInternet = shouldUseInternetSmart(userText || currentUserContent);
-    await generateThinkingActivity(userText || currentUserContent, useInternet, requestModel);
     if (generationId !== activeGenerationId) return "_STOPPED_";
     const internetContext = useInternet ? await collectInternetContext(userText || currentUserContent) : "";
     if (generationId !== activeGenerationId) return "_STOPPED_";
@@ -2953,25 +3084,72 @@
       const decoder = new TextDecoder();
       let fullText = "";
       let firstToken = true;
+      let receivedReasoning = false;
+      const inlineThinkingState = { inside: false, buffer: "" };
+      let streamBuffer = "";
+      const processStreamLine = line => {
+        if (!line.trim()) return;
+        try {
+          const json = JSON.parse(line);
+          const content = json.message?.content || "";
+          const nativeThinking = json.message?.thinking || "";
+          const inlineThinking = nativeThinking ? "" : extractInlineThinking(content, inlineThinkingState);
+          const reasoning = nativeThinking || inlineThinking;
+          const isThinkMarkupChunk = !nativeThinking && (inlineThinkingState.inside || /<\/?think>/i.test(content));
+          if (reasoning) {
+            updateThinkingReasoning(reasoning, !receivedReasoning);
+            receivedReasoning = true;
+          }
+          if (content) {
+            if (!isThinkMarkupChunk && firstToken) {
+              firstToken = false;
+              setNeuralProgressStep(1);
+              if (receivedReasoning) collapseThinkingToThought();
+              else restoreThinkingDefault("answer");
+            }
+            fullText += content;
+          }
+        } catch {
+          // A malformed line is ignored; incomplete JSON stays in streamBuffer until its newline arrives.
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n").filter(l => l.trim());
-        for (const line of lines) {
-          try {
-            const json = JSON.parse(line);
-            const content = json.message?.content || "";
-            if (content) {
-              if (firstToken) {
-                firstToken = false;
-                setNeuralProgressStep(1);
-                restoreThinkingDefault("answer");
-              }
-              fullText += content;
-            }
-          } catch { /* partial */ }
+        streamBuffer += decoder.decode(value, { stream: true });
+        let newlineIndex;
+        while ((newlineIndex = streamBuffer.indexOf("\n")) !== -1) {
+          const line = streamBuffer.slice(0, newlineIndex).replace(/\r$/, "");
+          streamBuffer = streamBuffer.slice(newlineIndex + 1);
+          processStreamLine(line);
+        }
+      }
+      streamBuffer += decoder.decode();
+      processStreamLine(streamBuffer);
+
+      const visibleText = fullText
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .replace(/<think>|<\/think>/gi, "")
+        .trim();
+      if (!visibleText) {
+        collapseThinkingToThought();
+        const fallbackBody = Object.assign({}, reqBody, { stream: false });
+        if (Object.prototype.hasOwnProperty.call(fallbackBody, "think")) fallbackBody.think = false;
+        const fallbackResponse = await fetch("http://127.0.0.1:11434/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fallbackBody),
+          signal: abortController.signal
+        });
+        if (fallbackResponse.ok) {
+          const fallback = await fallbackResponse.json();
+          fullText = String(fallback?.message?.content || "").trim();
+        }
+        if (!fullText) {
+          fullText = settings.appLanguage === "ru"
+            ? "Модель завершила рассуждение, но не вернула финальный ответ. Попробуй отправить запрос ещё раз."
+            : "The model finished reasoning but did not return a final answer. Please try again.";
         }
       }
 
@@ -3482,6 +3660,12 @@
     return encodeURI(`file:///${normalized.replace(/^\/+/, "")}`);
   }
 
+  async function tryGenerateInstantImage(prompt) {
+    if (!window.api?.generateOnlineImage) return null;
+    const result = await window.api.generateOnlineImage(prompt);
+    return result?.ok && result.path ? filePathToUrl(result.path) : null;
+  }
+
   async function tryGenerateFluxImage(prompt) {
     if (!window.api?.generateFluxImage) return null;
     if (!fluxStatus) await refreshFluxStatus();
@@ -3500,6 +3684,7 @@
 
   const FLUX_PYTHON_PACKAGES = [
     "torch",
+    "torchvision",
     "diffusers",
     "transformers",
     "accelerate",
@@ -3558,7 +3743,7 @@
     if (lower.includes("python was not found")) {
       return settings.appLanguage === "ru"
         ? "\u041d\u0435 \u043c\u043e\u0433\u0443 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c Flux: Python \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d. \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438 Python 3 \u0438 \u0437\u0430\u0442\u0435\u043c \u043f\u0430\u043a\u0435\u0442\u044b: torch, diffusers, transformers, accelerate, sentencepiece, safetensors."
-        : "I can't run Flux: Python was not found. Install Python 3, then install torch, diffusers, transformers, accelerate, sentencepiece and safetensors.";
+        : "I can't run SD Turbo: Python was not found. Install Python 3, then install torch, diffusers, transformers, accelerate and safetensors.";
     }
     if (
       lower.includes("python packages are missing")
@@ -3568,7 +3753,7 @@
     ) {
       return settings.appLanguage === "ru"
         ? "\u041d\u0435 \u043c\u043e\u0433\u0443 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c Flux: \u043d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 Python-\u043f\u0430\u043a\u0435\u0442\u043e\u0432. \u041d\u0443\u0436\u043d\u044b: torch, diffusers, transformers, accelerate, sentencepiece, safetensors."
-        : "I can't run Flux: Python packages are missing. Required: torch, diffusers, transformers, accelerate, sentencepiece and safetensors.";
+        : "I can't run SD Turbo: Python packages are missing. Required: torch, diffusers, transformers, accelerate and safetensors.";
     }
     if (
       lower.includes("cannot access gated repo")
@@ -3583,7 +3768,7 @@
     if (lower.includes("flux model is not downloaded") || lower.includes("download flux")) {
       return settings.appLanguage === "ru"
         ? "\u0421\u043a\u0430\u0447\u0430\u0439 Flux \u0432\u043e \u0432\u043a\u043b\u0430\u0434\u043a\u0435 Generation AI, \u0438 \u043f\u043e\u0441\u043b\u0435 \u044d\u0442\u043e\u0433\u043e \u044f \u0441\u043c\u043e\u0433\u0443 \u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0444\u043e\u0442\u043e."
-        : "Download Flux in the Generation AI tab first, then I can generate images.";
+        : "Prepare SD Turbo in the Generation AI tab first, then I can generate images.";
     }
     return message || t("fluxGenerateLocalFailed");
   }
@@ -3591,18 +3776,22 @@
   async function renderImageGenerationPlaceholder(prompt) {
     // Карточка-загрузка с пульсирующими точками.
     // Даём анимации «проиграться» 1.8с перед показом результата.
+    const instantImage = await tryGenerateInstantImage(prompt);
+    if (instantImage) return instantImage;
     if (!fluxStatus) await refreshFluxStatus();
-    const variant = getFluxVariant(selectedFluxVariantId());
+    let variant = getFluxVariant(selectedFluxVariantId()) || getFluxVariant(fluxStatus?.recommendedId);
     if (!variant?.installed) {
-      throw new Error(settings.appLanguage === "ru"
-        ? "\u0421\u043a\u0430\u0447\u0430\u0439 Flux \u0432\u043e \u0432\u043a\u043b\u0430\u0434\u043a\u0435 Generation AI, \u0438 \u043f\u043e\u0441\u043b\u0435 \u044d\u0442\u043e\u0433\u043e \u044f \u0441\u043c\u043e\u0433\u0443 \u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0444\u043e\u0442\u043e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e."
-        : "Download Flux in the Generation AI tab first, then I can generate images locally.");
+      const prepared = await window.api?.downloadFluxModel?.(variant?.id || "sd-turbo");
+      if (!prepared?.ok) throw new Error(prepared?.error || "Could not prepare SD Turbo.");
+      await refreshFluxStatus();
+      variant = getFluxVariant(variant?.id || "sd-turbo");
+      if (!variant?.installed) throw new Error("SD Turbo could not be prepared.");
     }
     const dataUrl = await tryGenerateFluxImage(prompt);
     if (!dataUrl) {
       throw new Error(settings.appLanguage === "ru"
         ? "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 Flux \u043d\u0435 \u0441\u043c\u043e\u0433 \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435."
-        : "Local Flux could not create the image.");
+        : "Local SD Turbo could not create the image.");
     }
     return dataUrl;
     // Добавляем сгенерированное изображение в тело сообщения.
@@ -3767,9 +3956,6 @@
       const imagePrompt = imagePromptFromChatFallback(displayText || text);
       showThinkingMessage("image", imagePrompt);
       setNeuralProgressStep(0);
-      setTimeout(() => setNeuralProgressStep(1), 250);
-      setTimeout(() => setNeuralProgressStep(2), 650);
-      await new Promise(resolve => setTimeout(resolve, 1200));
       let imageDataUrl = null;
       let imageError = null;
       try {
@@ -3826,6 +4012,8 @@
     const reply = await generateResponse(text, imgs, generationId);
     if (generationId !== activeGenerationId) return;
 
+    const totalDurationMs = thinkingStartedAt ? Date.now() - thinkingStartedAt : 0;
+    const thoughtDurationMs = thinkingThoughtDurationMs || (thinkingHasReasoning ? totalDurationMs : 0);
     removeThinkingMessage();
     isGenerating = false;
     updateHomeMode();
@@ -3833,7 +4021,12 @@
     sendBtn.style.display = "flex";
 
     if (reply !== "_STOPPED_") {
-      const assistantMsg = { role: "assistant", content: reply, animateOnRender: true };
+      const assistantMsg = {
+        role: "assistant",
+        content: reply,
+        animateOnRender: true,
+        workMeta: { thoughtDurationMs, totalDurationMs }
+      };
       if (lastCodeActivity) {
         assistantMsg.codeActivity = Object.assign({}, lastCodeActivity, { state: "edited" });
       }
@@ -4196,7 +4389,7 @@
       const status = await window.api.fluxStatus();
       if (status?.ok) {
         fluxStatus = status;
-        if (!settings.selectedFluxVariant && status.recommendedId) {
+        if (!status.variants?.some(variant => variant.id === settings.selectedFluxVariant) && status.recommendedId) {
           settings.selectedFluxVariant = status.recommendedId;
           persist();
         }
@@ -4212,7 +4405,7 @@
   }
 
   function selectedFluxVariantId() {
-    return settings.selectedFluxVariant || fluxStatus?.recommendedId || "fp8";
+    return settings.selectedFluxVariant || fluxStatus?.recommendedId || "sd-turbo";
   }
 
   function fluxQualityText(variant) {
@@ -4230,7 +4423,7 @@
   }
 
   function fluxIconMarkup() {
-    return `<span class="flux-provider-icon">FL</span>`;
+    return `<span class="flux-provider-icon">SD</span>`;
   }
 
   function renderFluxAction(variant) {
@@ -4293,18 +4486,7 @@
           ${recommended && !fluxStatus?.insufficient ? renderFluxAction(recommended) : ""}
         </div>
       </div>
-      <button class="flux-variants-toggle" type="button">
-        <span>${escapeHtml(fluxVariantsExpanded ? t("fluxHideVariants") : t("fluxShowVariants"))}</span>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <div class="model-version-list"><div class="model-version-inner"></div></div>
     `;
-    const list = section.querySelector(".model-version-inner");
-    variants.forEach((variant, index) => list.appendChild(buildFluxVariantItem(variant, index)));
-    section.querySelector(".flux-variants-toggle")?.addEventListener("click", () => {
-      fluxVariantsExpanded = !fluxVariantsExpanded;
-      renderModelsCatalog(modelsSearch ? modelsSearch.value : "");
-    });
     section.querySelectorAll("[data-flux-action]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const variantId = btn.dataset.variant;

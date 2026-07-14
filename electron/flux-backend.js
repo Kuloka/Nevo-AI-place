@@ -6,34 +6,14 @@ const { detectVram } = require('./gpu-detect');
 
 const FLUX_VARIANTS = [
   {
-    id: 'fp16',
-    label: 'FP16',
-    name: 'flux1-schnell',
-    quality: 'Full quality',
-    requiredVramGb: 24,
-    sizeLabel: '~24 GB',
-    fileName: 'flux1-schnell.safetensors',
-    url: 'https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell.safetensors'
-  },
-  {
-    id: 'fp8',
-    label: 'FP8',
-    name: 'flux1-schnell-fp8',
-    quality: 'Minimal quality loss',
-    requiredVramGb: 12,
-    sizeLabel: '~12 GB',
-    fileName: 'flux1-schnell-fp8.safetensors',
-    url: 'https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors'
-  },
-  {
-    id: 'nf4',
-    label: 'NF4',
-    name: 'flux1-schnell-bnb-nf4',
-    quality: 'Lower detail, low VRAM',
-    requiredVramGb: 6,
-    sizeLabel: '~6 GB',
-    fileName: 'flux1-schnell-bnb-nf4.safetensors',
-    url: 'https://huggingface.co/eridgd/flux.1-schnell-nf4/resolve/main/diffusion_pytorch_model.safetensors'
+    id: 'sd-turbo',
+    label: 'SD Turbo',
+    name: 'stable-diffusion-turbo',
+    quality: 'Fast local photorealistic generation',
+    requiredVramGb: 4,
+    sizeLabel: '~5 GB',
+    fileName: 'sd-turbo.ready',
+    url: null
   }
 ];
 
@@ -46,11 +26,7 @@ function getVariant(id) {
 }
 
 function selectFluxVariant(vramGb) {
-  if (typeof vramGb !== 'number' || !Number.isFinite(vramGb)) return null;
-  if (vramGb >= 24) return getVariant('fp16');
-  if (vramGb >= 12) return getVariant('fp8');
-  if (vramGb >= 6) return getVariant('nf4');
-  return null;
+  return getVariant('sd-turbo');
 }
 
 function modelPath(modelsDir, variant) {
@@ -60,7 +36,7 @@ function modelPath(modelsDir, variant) {
 async function getFluxStatus(modelsDir) {
   ensureDir(modelsDir);
   const gpu = await detectVram();
-  const recommended = gpu.known ? selectFluxVariant(gpu.vramGb) : null;
+  const recommended = selectFluxVariant(gpu.vramGb);
   const variants = FLUX_VARIANTS.map(variant => {
     const filePath = modelPath(modelsDir, variant);
     const installed = fs.existsSync(filePath);
@@ -75,7 +51,7 @@ async function getFluxStatus(modelsDir) {
     ok: true,
     gpu,
     recommendedId: recommended ? recommended.id : null,
-    insufficient: gpu.known && !recommended,
+    insufficient: false,
     variants
   };
 }
@@ -92,12 +68,17 @@ function requestWithRedirect(url, onResponse, redirects = 0) {
 
 function downloadFluxVariant(modelsDir, variantId, onProgress) {
   const variant = getVariant(variantId);
-  if (!variant) return Promise.resolve({ ok: false, error: 'Unknown Flux variant.' });
+  if (!variant) return Promise.resolve({ ok: false, error: 'Unknown SD Turbo model.' });
   ensureDir(modelsDir);
 
   const target = modelPath(modelsDir, variant);
   const temp = `${target}.download`;
   if (fs.existsSync(target)) return Promise.resolve({ ok: true, variantId, path: target, alreadyInstalled: true });
+  if (!variant.url) {
+    fs.writeFileSync(target, 'SD Turbo is prepared. Model weights download automatically on first generation.\n', 'utf8');
+    onProgress?.({ variantId, model: variant.name, percent: 100, completed: 1, total: 1, status: 'done' });
+    return Promise.resolve({ ok: true, variantId, path: target });
+  }
 
   return new Promise(resolve => {
     const req = requestWithRedirect(variant.url, response => {
@@ -144,13 +125,13 @@ function downloadFluxVariant(modelsDir, variantId, onProgress) {
 
 function runFluxGenerate({ modelsDir, outputDir, prompt, variantId, computeMode = 'auto', onProgress }) {
   const variant = getVariant(variantId);
-  if (!variant) return Promise.resolve({ ok: false, error: 'Unknown Flux variant.' });
+  if (!variant) return Promise.resolve({ ok: false, error: 'Unknown SD Turbo model.' });
   const model = modelPath(modelsDir, variant);
-  if (!fs.existsSync(model)) return Promise.resolve({ ok: false, error: 'Flux model is not downloaded.' });
+  if (!fs.existsSync(model)) return Promise.resolve({ ok: false, error: 'SD Turbo is not prepared yet.' });
   ensureDir(outputDir);
 
-  const script = path.join(__dirname, '..', 'scripts', 'flux_generate.py');
-  const output = path.join(outputDir, `flux-${Date.now()}.png`);
+  const script = path.join(__dirname, '..', 'scripts', 'sd_turbo_generate.py');
+  const output = path.join(outputDir, `sd-turbo-${Date.now()}.png`);
   const candidates = process.platform === 'win32' ? ['py', 'python', 'python3'] : ['python3', 'python'];
 
   const parseLastJson = text => {
@@ -189,7 +170,7 @@ function runFluxGenerate({ modelsDir, outputDir, prompt, variantId, computeMode 
         try { child.kill(); } catch (e) { /* ignore */ }
         resolve({
           ok: false,
-          error: 'Flux generation timed out. First launch can take a long time while downloading or loading the model.',
+          error: 'SD Turbo generation timed out. First launch can take a long time while downloading or loading the model.',
           stdout,
           stderr
         });
@@ -228,7 +209,7 @@ function runFluxGenerate({ modelsDir, outputDir, prompt, variantId, computeMode 
         if (settled) return;
         const json = parseLastJson(stdout);
         if (json && json.ok === false) {
-          finish({ ok: false, error: json.error || 'Flux generation failed.', stdout, stderr });
+          finish({ ok: false, error: json.error || 'SD Turbo generation failed.', stdout, stderr });
           return;
         }
         if (code !== 0) {
