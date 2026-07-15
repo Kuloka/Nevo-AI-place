@@ -803,7 +803,7 @@ ipcMain.handle('image:generate-online', async (_event, prompt) => {
     const text = String(prompt || '').trim().slice(0, 1200);
     if (!text) return { ok: false, error: 'Empty image prompt.' };
     const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(text)}?width=768&height=768&nologo=true`;
-    const response = await fetch(url, { headers: { 'User-Agent': 'Nevo/1.1.6' } });
+    const response = await fetch(url, { headers: { 'User-Agent': 'Nevo/1.1.7' } });
     if (!response.ok) return { ok: false, error: `Image service HTTP ${response.status}` };
     const bytes = Buffer.from(await response.arrayBuffer());
     if (!bytes.length) return { ok: false, error: 'Image service returned an empty file.' };

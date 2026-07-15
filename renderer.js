@@ -56,6 +56,9 @@
   let acceptedChangeChatId = null;
   let pendingApprovalResolve = null;
   let thinkingTicker = null;
+  let imageGenerationTicker = null;
+  let imageGenerationProgress = 0;
+  let imageGenerationStage = "";
   let thinkingStartedAt = 0;
   let panelFileTabsState = [];
   let activePanelFileKey = null;
@@ -1946,6 +1949,18 @@
             <span class="thinking-label thinking-shining-text">${escapeHtml(waitingText)}</span>
           </span>
         </div>
+        ${mode === "image" ? `
+          <div class="image-generation-card" role="status" aria-live="polite">
+            <div class="image-generation-preview" aria-hidden="true">
+              <div class="image-generation-art"></div>
+              <div class="image-generation-cover"></div>
+            </div>
+            <div class="image-generation-meta">
+              <span class="image-generation-status">${escapeHtml(settings.appLanguage === "ru" ? "Начинаю подготовку..." : "Getting started...")}</span>
+              <span class="image-generation-percent">0%</span>
+            </div>
+            <div class="image-generation-track"><i></i></div>
+          </div>` : ""}
         <div class="thinking-reasoning" role="status" aria-live="polite">
           <div class="thinking-stage">
             <span class="thinking-stage-label">Thinking</span>
@@ -1957,7 +1972,43 @@
       </div>
     `;
     messagesEl.appendChild(thinkingEl);
+    if (mode === "image") startImageGenerationAnimation();
     chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function updateImageGenerationAnimation(progress, status = "") {
+    if (!thinkingEl) return;
+    imageGenerationProgress = Math.max(imageGenerationProgress, Math.min(100, Math.round(progress || 0)));
+    if (status) imageGenerationStage = status;
+    const card = thinkingEl.querySelector(".image-generation-card");
+    if (!card) return;
+    card.style.setProperty("--image-generation-progress", `${imageGenerationProgress}%`);
+    const text = card.querySelector(".image-generation-status");
+    const percent = card.querySelector(".image-generation-percent");
+    if (text && imageGenerationStage) text.textContent = imageGenerationStage;
+    if (percent) percent.textContent = `${imageGenerationProgress}%`;
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function startImageGenerationAnimation() {
+    clearInterval(imageGenerationTicker);
+    imageGenerationProgress = 3;
+    imageGenerationStage = settings.appLanguage === "ru" ? "Подготавливаю генерацию..." : "Preparing image generation...";
+    updateImageGenerationAnimation(imageGenerationProgress, imageGenerationStage);
+    // This is an honest progress estimate: provider stages move it forward, while
+    // the timer only fills the gaps between those updates and never claims completion.
+    imageGenerationTicker = setInterval(() => {
+      const ceiling = imageGenerationProgress < 25 ? 25 : imageGenerationProgress < 55 ? 55 : 90;
+      if (imageGenerationProgress < ceiling) updateImageGenerationAnimation(imageGenerationProgress + 1);
+    }, 800);
+  }
+
+  function setImageGenerationStage(stage) {
+    const labels = settings.appLanguage === "ru"
+      ? { loading: "Загружаю модель...", downloading: "Скачиваю компоненты модели...", preparing: "Подготавливаю модель...", generating: "Создаю изображение...", done: "Изображение готово" }
+      : { loading: "Loading model...", downloading: "Downloading model components...", preparing: "Preparing model...", generating: "Creating image...", done: "Image created" };
+    const progress = { loading: 30, downloading: 42, preparing: 58, generating: 72, done: 100 };
+    updateImageGenerationAnimation(progress[stage] || imageGenerationProgress, labels[stage] || imageGenerationStage);
   }
 
   function addThinkingLine(line) {
@@ -2208,6 +2259,8 @@
   function removeThinkingMessage() {
     clearInterval(thinkingTicker);
     thinkingTicker = null;
+    clearInterval(imageGenerationTicker);
+    imageGenerationTicker = null;
     if (thinkingRenderFrame) cancelAnimationFrame(thinkingRenderFrame);
     thinkingRenderFrame = 0;
     thinkingReasoningText = "";
@@ -2827,13 +2880,20 @@
     if (role === "assistant" && msg.images && msg.images.length) {
       const att = document.createElement("div");
       att.className = "message-attachments";
+      const animateImageReveal = Boolean(msg.animateImageOnRender);
       msg.images.forEach(dataUrl => {
+        const reveal = document.createElement("div");
+        reveal.className = "image-generation-result";
         const img = document.createElement("img");
         img.className = "chat-image";
         img.src = dataUrl;
         img.addEventListener("click", () => openImagePreview(dataUrl));
-        att.appendChild(img);
+        reveal.appendChild(img);
+        att.appendChild(reveal);
+        if (animateImageReveal) requestAnimationFrame(() => reveal.classList.add("is-revealed"));
+        else reveal.classList.add("is-revealed");
       });
+      delete msg.animateImageOnRender;
       body.appendChild(att);
     }
 
@@ -3616,21 +3676,37 @@
     const raw = String(prompt || "").trim();
     const lower = raw.toLowerCase();
     const has = (...words) => words.some(word => lower.includes(word));
-    let subject = raw || "simple object";
+    // Keep every detail from the user's request.  Replacing it with a generic
+    // subject (for example, just "a banana") made the generated picture ignore
+    // its requested setting, style and composition.
+    const subject = raw || "simple object";
+    const clarifiers = [];
     if (has("\u0431\u0430\u043d\u0430\u043d", "banana")) {
-      subject = "one single ripe yellow banana, curved whole banana, clearly recognizable banana, centered, isolated subject, not sliced, not mango, not corn, not salad, not dessert";
+      clarifiers.push("if a banana is requested, make it a clearly recognizable whole banana");
     } else if (has("\u043a\u043e\u0442", "\u043a\u043e\u0442\u0438\u043a", "cat", "kitten")) {
-      subject = "one cute domestic cat, clearly recognizable cat, full body or portrait, soft fur, natural anatomy, not a rabbit, not a toy";
+      clarifiers.push("if a cat is requested, use natural feline anatomy");
     } else if (has("\u0441\u043e\u0431\u0430\u043a", "\u043f\u0435\u0441", "\u043f\u0451\u0441", "dog", "puppy")) {
-      subject = "one friendly dog, clearly recognizable dog, natural anatomy, soft fur";
+      clarifiers.push("if a dog is requested, use natural canine anatomy");
     } else if (has("\u0434\u043e\u043c", "house")) {
-      subject = "one cozy house, clear architecture, front view";
+      clarifiers.push("if a house is requested, keep its architecture clear and coherent");
     } else if (has("\u043c\u0430\u0448\u0438\u043d", "\u0430\u0432\u0442\u043e", "car")) {
-      subject = "one modern car, clearly recognizable vehicle, three quarter view";
+      clarifiers.push("if a vehicle is requested, keep its geometry coherent");
     } else if (has("\u0446\u0432\u0435\u0442\u043e\u043a", "\u0446\u0432\u0435\u0442\u044b", "flower")) {
-      subject = "one beautiful flower, detailed petals, centered composition";
+      clarifiers.push("if a flower is requested, show detailed petals");
     }
-    return `${subject}, high quality, clean composition, centered subject, sharp focus, pleasant lighting, detailed, no text, no watermark`;
+    // Image models are much more reliable with the canonical English breed name
+    // than with a transliterated Russian name. Keep the user's Russian request,
+    // but add visual traits that distinguish easily-confused breeds.
+    const breedHints = [
+      { words: ["\u043c\u043e\u043f\u0441", "pug"], hint: "The dog must be a purebred pug: small compact body, fawn coat with a black mask, flat short muzzle, round prominent eyes, folded ears and a tightly curled tail; not a collie, shepherd or long-snouted dog." },
+      { words: ["\u0445\u0430\u0441\u043a\u0438", "husky"], hint: "The dog must be a Siberian husky with erect triangular ears, thick double coat and characteristic blue or multicoloured eyes." },
+      { words: ["\u043a\u043e\u0440\u0433\u0438", "corgi"], hint: "The dog must be a Welsh corgi: very short legs, long low body, large upright ears and a fox-like face." },
+      { words: ["\u0431\u0443\u043b\u044c\u0434\u043e\u0433", "bulldog"], hint: "The dog must be a bulldog with a broad wrinkled face, short muzzle and stocky muscular body." },
+      { words: ["\u0442\u0430\u043a\u0441\u0430", "dachshund"], hint: "The dog must be a dachshund: a long low body, very short legs and long floppy ears." }
+    ];
+    const breed = breedHints.find(item => has(...item.words));
+    if (breed) clarifiers.push(breed.hint);
+    return `Create an image that follows this request exactly: ${subject}. Preserve the requested subject, setting, style, colours, composition and all important details. ${clarifiers.join(". ")}. High quality, detailed, no text or watermark unless the request explicitly asks for text.`;
   }
 
   function preloadImage(src, timeoutMs = 45000) {
@@ -3662,7 +3738,7 @@
 
   async function tryGenerateInstantImage(prompt) {
     if (!window.api?.generateOnlineImage) return null;
-    const result = await window.api.generateOnlineImage(prompt);
+    const result = await window.api.generateOnlineImage(buildOnlineImagePrompt(prompt));
     return result?.ok && result.path ? filePathToUrl(result.path) : null;
   }
 
@@ -3673,7 +3749,7 @@
     const variant = getFluxVariant(variantId);
     if (!variant?.installed) return null;
     const result = await window.api.generateFluxImage({
-      prompt,
+      prompt: buildOnlineImagePrompt(prompt),
       variantId,
       computeMode: settings.computeMode || "auto"
     });
@@ -3977,6 +4053,14 @@
         }
       }
       if (generationId !== activeGenerationId) return;
+      if (imageError) {
+        const stopped = settings.appLanguage === "ru"
+          ? `Генерация остановилась: ${imageGenerationStage || "неизвестный этап"}`
+          : `Generation stopped: ${imageGenerationStage || "unknown stage"}`;
+        imageError = `${imageError}\n\n${stopped}`;
+      } else {
+        setImageGenerationStage("done");
+      }
       removeThinkingMessage();
       finishNeuralProgress();
       chat.messages.push(imageDataUrl
@@ -3984,7 +4068,8 @@
           role: "assistant",
           content: `**${t("imagePrompt")}:** ${imagePrompt}`,
           images: [imageDataUrl],
-          animateOnRender: true
+          animateOnRender: true,
+          animateImageOnRender: true
         }
         : {
           role: "assistant",
@@ -4738,6 +4823,7 @@
       if (stage === "loading" || stage === "downloading") setNeuralProgressStep(1);
       if (stage === "preparing" || stage === "generating") setNeuralProgressStep(2);
       if (stage === "done") finishNeuralProgress();
+      setImageGenerationStage(stage);
     });
   }
 

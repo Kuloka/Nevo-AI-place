@@ -1110,6 +1110,76 @@ html, body {
 
 .message-body { max-width: 85%; min-width: 60px; }
 .thinking-message { margin-bottom: 22px; }
+.image-generation-card {
+  --image-generation-progress: 0%;
+  width: min(100%, 360px);
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-card, var(--bg-input));
+  overflow: hidden;
+}
+.image-generation-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #25232a;
+}
+.image-generation-art {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 72% 25%, rgba(255, 183, 95, .9), transparent 19%),
+    radial-gradient(circle at 25% 78%, rgba(102, 151, 255, .82), transparent 34%),
+    linear-gradient(135deg, #151526 0%, #7c496a 49%, #e69c65 100%);
+  transform: scale(1.04);
+}
+.image-generation-cover {
+  position: absolute;
+  inset: -24% 0 0;
+  pointer-events: none;
+  opacity: .96;
+  backdrop-filter: blur(28px) saturate(.65);
+  -webkit-backdrop-filter: blur(28px) saturate(.65);
+  background: rgba(26, 25, 32, .35);
+  clip-path: polygon(0 var(--image-generation-progress), 100% var(--image-generation-progress), 100% 100%, 0 100%);
+  transition: clip-path .55s ease;
+}
+.image-generation-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.image-generation-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-generation-percent { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.image-generation-track { height: 3px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: var(--border-light); }
+.image-generation-track i { display: block; width: var(--image-generation-progress); height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff7a45, #ffc371); transition: width .55s ease; }
+.image-generation-result {
+  position: relative;
+  max-width: 220px;
+  max-height: 220px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.image-generation-result::after {
+  content: "";
+  position: absolute;
+  inset: -25% 0 0;
+  pointer-events: none;
+  opacity: 1;
+  backdrop-filter: blur(28px) saturate(.55);
+  -webkit-backdrop-filter: blur(28px) saturate(.55);
+  background: rgba(25, 25, 30, .22);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  transition: clip-path 1.35s cubic-bezier(.2, .75, .2, 1), opacity .15s linear 1.2s;
+}
+.image-generation-result.is-revealed::after { clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%); opacity: 0; }
 .thinking-reasoning {
   display: none;
   width: min(100%, 540px);
